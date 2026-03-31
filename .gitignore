@@ -76,6 +76,11 @@ tools/webgfx-tests-fxr/
 # Room schemas
 app/schemas/
 
+# Locally staged Chromium backend assets
+app/src/chromium/assets/icudtl.dat
+app/src/chromium/assets/snapshot_blob_64.bin
+app/src/chromium/assets/wolvic.pak
+
 # HVR app connect
 app/agconnect-services.json
 
