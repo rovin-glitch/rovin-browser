@@ -148,6 +148,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
     private static final String ROVIN_IMMERSIVE_BUTTON_XPATH = "//*[@id='neonchuk-vr-button'] | //button[contains(normalize-space(.), 'ENTER VR')]";
+    private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static class RovinLaunchTarget {
         final String url;
         final String statusMessage;
@@ -1505,6 +1506,20 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         runOnUiThread(() -> {
             dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK));
             dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK));
+        });
+    }
+
+    @SuppressWarnings({"UnusedDeclaration"})
+    @Keep
+    void handleAppButton() {
+        runOnUiThread(() -> {
+            Session session = SessionStore.get().getActiveSession();
+            if (session == null || session.getCurrentUri() == null || session.getCurrentUri().isBlank()) {
+                handleBack();
+                return;
+            }
+
+            session.loadUri(ROVIN_APP_BUTTON_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
         });
     }
 

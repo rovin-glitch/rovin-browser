@@ -281,14 +281,22 @@ BrowserWorld::State::SimulateBack() {
 }
 
 static bool
+wasAppButtonClicked(const Controller& controller) {
+    auto WasButtonPressed = [](const Controller& controller, ControllerDelegate::Button button) {
+        return !(controller.lastButtonState & button) && (controller.buttonState & button);
+    };
+
+    return WasButtonPressed(controller, ControllerDelegate::BUTTON_APP);
+}
+
+static bool
 wasGoBackButtonClicked(const Controller& controller, bool isPresenting) {
     auto WasButtonPressed = [](const Controller& controller, ControllerDelegate::Button button) {
         return !(controller.lastButtonState & button) && (controller.buttonState & button);
     };
 
-    return (WasButtonPressed(controller, ControllerDelegate::BUTTON_APP) ||
-           (!isPresenting && (WasButtonPressed(controller, ControllerDelegate::BUTTON_B) ||
-                              WasButtonPressed(controller, ControllerDelegate::BUTTON_Y))));
+    return (!isPresenting && (WasButtonPressed(controller, ControllerDelegate::BUTTON_B) ||
+                              WasButtonPressed(controller, ControllerDelegate::BUTTON_Y)));
 };
 
 void
@@ -298,7 +306,14 @@ BrowserWorld::State::CheckBackButton() {
           continue;
       }
 
-    if (wasGoBackButtonClicked(controller, externalVR->IsPresenting())) {
+    if (wasAppButtonClicked(controller)) {
+          if (externalVR->IsPresenting()) {
+              VRBrowser::HandleAppButton();
+          } else {
+              SimulateBack();
+          }
+          webXRInterstialState = WebXRInterstialState::HIDDEN;
+      } else if (wasGoBackButtonClicked(controller, externalVR->IsPresenting())) {
           SimulateBack();
           webXRInterstialState = WebXRInterstialState::HIDDEN;
       } else if (webXRInterstialState == WebXRInterstialState::ALLOW_DISMISS
