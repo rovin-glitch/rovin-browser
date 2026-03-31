@@ -2620,8 +2620,8 @@ the Select` button. When clicked it bookmarks all the previously selected tabs -
 
     <string name="rovin_landing_title">Rovin Browser</string>
     <string name="rovin_landing_body">Rovin Games presents %1$s</string>
-    <string name="rovin_landing_description">Open the hosted Rovin Browser build and start the WebXR experience when you are ready.</string>
-    <string name="rovin_landing_description_bundled">Open the packaged Rovin Browser build and start the WebXR experience when you are ready.</string>
+    <string name="rovin_landing_description">Opening the hosted Rovin Browser build automatically. You can also start it now.</string>
+    <string name="rovin_landing_description_bundled">Opening the packaged Rovin Browser build automatically. You can also start it now.</string>
     <string name="rovin_landing_error_missing_target">No valid Rovin launch target is configured yet. Retry after staging bundled content or restoring the hosted URL.</string>
     <string name="rovin_landing_error_bundled_missing">Packaged content was enabled, but the local game entry was not found. Rovin Browser can still fall back to the hosted build.</string>
     <string name="rovin_landing_play_resume">Open Neon Chuk</string>

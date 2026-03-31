@@ -80,6 +80,7 @@ app/schemas/
 app/src/chromium/assets/icudtl.dat
 app/src/chromium/assets/snapshot_blob_64.bin
 app/src/chromium/assets/wolvic.pak
+app/src/main/assets/rovin-game/
 
 # HVR app connect
 app/agconnect-services.json

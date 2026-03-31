@@ -130,7 +130,7 @@ android {
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
         buildConfigField 'String', 'ROVIN_HOSTED_GAME_URL', '"https://neon-chuck-webxr-b95226.gitlab.io/"'
         buildConfigField 'String', 'ROVIN_GAME_TITLE', '"Neon Chuk"'
-        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'false'
+        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
         buildConfigField 'String', 'ROVIN_BUNDLED_ASSET_RELATIVE_PATH', '"rovin-game/index.html"'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

@@ -100,6 +100,7 @@ import com.igalia.wolvic.utils.BitmapCache;
 import com.igalia.wolvic.utils.ConnectivityReceiver;
 import com.igalia.wolvic.utils.DeviceType;
 import com.igalia.wolvic.utils.LocaleUtils;
+import com.igalia.wolvic.utils.RovinAssetHttpServer;
 import com.igalia.wolvic.utils.StringUtils;
 import com.igalia.wolvic.utils.SystemUtils;
 
@@ -145,7 +146,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
-    private static final String ROVIN_ASSET_URI_PREFIX = "resource://android/assets/";
+    private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
+    private static final String ROVIN_IMMERSIVE_BUTTON_XPATH = "//*[@id='neonchuk-vr-button'] | //button[contains(normalize-space(.), 'ENTER VR')]";
     private static class RovinLaunchTarget {
         final String url;
         final String statusMessage;
@@ -301,6 +303,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private String mImmersiveTargetElementXPath;
     private OptionalInt mMaxCompositionLayers = OptionalInt.empty();
     private LinkedList<CheckCompositionLayersCallback> mCompositionLayersPendingCallbacks;
+    private Runnable mPendingRovinAutoLaunch;
+    private RovinAssetHttpServer mRovinAssetHttpServer;
 
     private ViewTreeObserver.OnGlobalFocusChangeListener globalFocusListener = new ViewTreeObserver.OnGlobalFocusChangeListener() {
         @Override
@@ -768,6 +772,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         SessionStore.get().onDestroy();
 
+        if (mRovinAssetHttpServer != null) {
+            mRovinAssetHttpServer.stop();
+            mRovinAssetHttpServer = null;
+        }
+
         getServicesProvider().getConnectivityReceiver().removeListener(mConnectivityDelegate);
 
         mPrefs.unregisterOnSharedPreferenceChangeListener(this);
@@ -1000,6 +1009,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void showRovinLanding() {
         final RovinLaunchTarget target = resolveRovinLaunchTarget();
+        cancelPendingRovinAutoLaunch();
         setPrimaryBrowserChromeVisible(false);
 
         if (mRovinLandingWidget == null) {
@@ -1024,6 +1034,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         if (target.valid) {
             mRovinLandingWidget.bindReady(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
+            scheduleRovinAutoLaunch(target);
         } else {
             mRovinLandingWidget.bindError(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
         }
@@ -1032,6 +1043,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
+        cancelPendingRovinAutoLaunch();
         if (!target.valid || StringUtils.isEmpty(target.url)) {
             showRovinLanding();
             return;
@@ -1046,6 +1058,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {
+        cancelPendingRovinAutoLaunch();
         final String recoveryUrl = getRecoveryBrowserUrl(target);
         if (StringUtils.isEmpty(recoveryUrl)) {
             showRovinLanding();
@@ -1087,8 +1100,16 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         final boolean bundledAvailable = hasBundledGameAsset();
 
         if (bundledPreferred && bundledAvailable) {
+            final String bundledUrl = getBundledGameUrl();
+            if (StringUtils.isEmpty(bundledUrl)) {
+                return RovinLaunchTarget.error(
+                        getString(R.string.rovin_landing_error_missing_target),
+                        true,
+                        true
+                );
+            }
             return RovinLaunchTarget.ready(
-                    ROVIN_ASSET_URI_PREFIX + BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH,
+                    bundledUrl,
                     getString(R.string.rovin_landing_description_bundled),
                     true,
                     true
@@ -1123,6 +1144,25 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @Nullable
+    private String getBundledGameUrl() {
+        if (!hasBundledGameAsset()) {
+            return null;
+        }
+
+        if (mRovinAssetHttpServer == null) {
+            mRovinAssetHttpServer = new RovinAssetHttpServer(getAssets());
+        }
+
+        final String baseUrl = mRovinAssetHttpServer.start();
+        if (StringUtils.isEmpty(baseUrl)) {
+            Log.e(LOGTAG, "Failed to start bundled Rovin asset server");
+            return null;
+        }
+
+        return baseUrl + "index.html";
+    }
+
+    @Nullable
     private String getRecoveryBrowserUrl(@NonNull RovinLaunchTarget target) {
         if (!StringUtils.isEmpty(BuildConfig.ROVIN_HOSTED_GAME_URL)) {
             return BuildConfig.ROVIN_HOSTED_GAME_URL;
@@ -1134,6 +1174,27 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         final String homepage = SettingsStore.getInstance(this).getHomepage();
         return StringUtils.isEmpty(homepage) ? null : homepage;
+    }
+
+    private void scheduleRovinAutoLaunch(@NonNull RovinLaunchTarget target) {
+        if (!target.valid || StringUtils.isEmpty(target.url)) {
+            return;
+        }
+
+        mPendingRovinAutoLaunch = () -> {
+            mPendingRovinAutoLaunch = null;
+            if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+                launchRovinExperience(target);
+            }
+        };
+        mHandler.postDelayed(mPendingRovinAutoLaunch, ROVIN_AUTO_LAUNCH_DELAY_MS);
+    }
+
+    private void cancelPendingRovinAutoLaunch() {
+        if (mPendingRovinAutoLaunch != null) {
+            mHandler.removeCallbacks(mPendingRovinAutoLaunch);
+            mPendingRovinAutoLaunch = null;
+        }
     }
 
     private ConnectivityReceiver.Delegate mConnectivityDelegate = connected -> {
