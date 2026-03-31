@@ -22,7 +22,6 @@ import org.chromium.ui.base.ViewAndroidDelegate;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.url.GURL;
 import org.chromium.wolvic.Tab;
-import org.chromium.wolvic.payments.ui.PaymentRequestUI;
 import org.chromium.wolvic.TabCompositorView;
 import org.chromium.wolvic.WolvicWebContentsFactory;
 
@@ -123,47 +122,12 @@ public class TabWebContentsObserver extends WebContentsObserver {
         dispatchCanGoBackOrForward();
     }
 
-    @Override
     public void onCreateNewPaymentHandler(final WebContents newWebContents) {
         WSession.ContentDelegate contentDelegate = mSession.getContentDelegate();
         if (contentDelegate == null) {
             return;
         }
-
-        Context context = mWebContents.get().getTopLevelNativeWindow().getContext().get();
-        PaymentRequestUI paymentHandler = new PaymentRequestUI(context, newWebContents, null);
-        final TabCompositorView compositorView = paymentHandler.getCompositorView();
-        assert newWebContents.getViewAndroidDelegate() != null
-             : "WebContents should be initialized.";
-
-        ViewAndroidDelegate viewDelegate = newWebContents.getViewAndroidDelegate();
-        assert viewDelegate.getContainerView() instanceof ContentView
-                : "WebContents should not set container views other than ContentView.";
-
-        mTab.setPaymentWebContents(newWebContents, (ContentView) viewDelegate.getContainerView(), compositorView);
-
-        WDisplay display = mSession.acquireOverlayDisplay(compositorView);
-        contentDelegate.onShowPaymentHandler(mSession, display, () -> {
-            if (newWebContents.isDestroyed()) {
-                return;
-            }
-            mTab.setPaymentWebContents(null, null, null);
-            newWebContents.destroy();
-        });
-
-        // Show Compositor View after attaching to the parent view.
-        compositorView.setCurrentWebContents(newWebContents);
-
-        mPaymentWebContentsObserver = new WebContentsObserver(newWebContents) {
-            @Override
-            public void destroy() {
-                mSession.releaseOverlayDisplay(compositorView);
-                mTab.setPaymentWebContents(null, null, null);
-
-                contentDelegate.onHidePaymentHandler(mSession);
-                newWebContents.removeObserver(this);
-            }
-        };
+        newWebContents.destroy();
     }
 
     @Override

@@ -61,7 +61,7 @@ public class SessionImpl implements WSession, DownloadManagerBridge.Delegate {
     private void createSessionFinderIfNeeded() {
         if (mSessionFinder != null)
             return;
-        mSessionFinder = new SessionFinderImpl(mTab.getActiveWebContents());
+        mSessionFinder = new SessionFinderImpl();
     }
 
     private class ReadyCallback implements RuntimeImpl.Callback {
@@ -437,7 +437,7 @@ public class SessionImpl implements WSession, DownloadManagerBridge.Delegate {
     }
 
     @Nullable
-    public TabWebContentsDelegate.FindInPageDelegate getFindInPageDelegate() { return mSessionFinder; }
+    public TabWebContentsDelegate.FindInPageDelegate getFindInPageDelegate() { return null; }
 
     @Override
     public void newDownload(String url) {

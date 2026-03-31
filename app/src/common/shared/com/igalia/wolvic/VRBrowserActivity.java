@@ -92,6 +92,7 @@ import com.igalia.wolvic.ui.widgets.Windows;
 import com.igalia.wolvic.ui.widgets.dialogs.CrashDialogWidget;
 import com.igalia.wolvic.ui.widgets.dialogs.LegalDocumentDialogWidget;
 import com.igalia.wolvic.ui.widgets.dialogs.PromptDialogWidget;
+import com.igalia.wolvic.ui.widgets.dialogs.RovinLandingDialogWidget;
 import com.igalia.wolvic.ui.widgets.dialogs.SendTabDialogWidget;
 import com.igalia.wolvic.ui.widgets.dialogs.WhatsNewWidget;
 import com.igalia.wolvic.ui.widgets.menus.VideoProjectionMenuWidget;
@@ -104,6 +105,8 @@ import com.igalia.wolvic.utils.SystemUtils;
 
 import org.json.JSONObject;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,6 +145,30 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
+    private static final String ROVIN_ASSET_URI_PREFIX = "resource://android/assets/";
+    private static class RovinLaunchTarget {
+        final String url;
+        final String statusMessage;
+        final boolean bundledPreferred;
+        final boolean bundledAvailable;
+        final boolean valid;
+
+        private RovinLaunchTarget(String url, String statusMessage, boolean bundledPreferred, boolean bundledAvailable, boolean valid) {
+            this.url = url;
+            this.statusMessage = statusMessage;
+            this.bundledPreferred = bundledPreferred;
+            this.bundledAvailable = bundledAvailable;
+            this.valid = valid;
+        }
+
+        static RovinLaunchTarget ready(String url, String statusMessage, boolean bundledPreferred, boolean bundledAvailable) {
+            return new RovinLaunchTarget(url, statusMessage, bundledPreferred, bundledAvailable, true);
+        }
+
+        static RovinLaunchTarget error(String statusMessage, boolean bundledPreferred, boolean bundledAvailable) {
+            return new RovinLaunchTarget(null, statusMessage, bundledPreferred, bundledAvailable, false);
+        }
+    }
 
     private boolean shouldRestoreHeadLockOnVRVideoExit;
 
@@ -235,6 +262,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     CrashDialogWidget mCrashDialog;
     TrayWidget mTray;
     WhatsNewWidget mWhatsNewWidget = null;
+    RovinLandingDialogWidget mRovinLandingWidget = null;
     WebXRInterstitialWidget mWebXRInterstitial;
     PermissionDelegate mPermissionDelegate;
     LinkedList<UpdateListener> mWidgetUpdateListeners;
@@ -964,8 +992,148 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 }
             }
         } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
-            mWindows.getFocusedWindow().loadHome();
+            showRovinLanding();
+        } else {
+            Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + mWindows.getFocusedWindow().getSession().getCurrentUri());
         }
+    }
+
+    private void showRovinLanding() {
+        final RovinLaunchTarget target = resolveRovinLaunchTarget();
+        setPrimaryBrowserChromeVisible(false);
+
+        if (mRovinLandingWidget == null) {
+            mRovinLandingWidget = new RovinLandingDialogWidget(this);
+            mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
+                @Override
+                public void onPlayRequested() {
+                    launchRovinExperience(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRecoveryBrowserRequested() {
+                    openRecoveryBrowser(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRetryRequested() {
+                    showRovinLanding();
+                }
+            });
+        }
+
+        if (target.valid) {
+            mRovinLandingWidget.bindReady(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
+        } else {
+            mRovinLandingWidget.bindError(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
+        }
+
+        mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+    }
+
+    private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
+        if (!target.valid || StringUtils.isEmpty(target.url)) {
+            showRovinLanding();
+            return;
+        }
+
+        if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+            mRovinLandingWidget.hide(REMOVE_WIDGET);
+            mRovinLandingWidget = null;
+        }
+
+        mWindows.openInKioskMode(target.url);
+    }
+
+    private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {
+        final String recoveryUrl = getRecoveryBrowserUrl(target);
+        if (StringUtils.isEmpty(recoveryUrl)) {
+            showRovinLanding();
+            return;
+        }
+
+        if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+            mRovinLandingWidget.hide(REMOVE_WIDGET);
+            mRovinLandingWidget = null;
+        }
+
+        WindowWidget focusedWindow = mWindows.getFocusedWindow();
+        if (focusedWindow == null || focusedWindow.getSession() == null) {
+            showRovinLanding();
+            return;
+        }
+
+        focusedWindow.setKioskMode(false);
+        attachToWindow(focusedWindow, null);
+        setPrimaryBrowserChromeVisible(true);
+        focusedWindow.getSession().loadUri(recoveryUrl, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+    }
+
+    private void setPrimaryBrowserChromeVisible(boolean visible) {
+        if (mNavigationBar != null) {
+            mNavigationBar.setVisible(visible);
+        }
+        if (mTray != null) {
+            mTray.setVisible(visible);
+        }
+        if (mTabsBar != null) {
+            mTabsBar.setVisible(visible);
+        }
+    }
+
+    @Nullable
+    private RovinLaunchTarget resolveRovinLaunchTarget() {
+        final boolean bundledPreferred = BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED;
+        final boolean bundledAvailable = hasBundledGameAsset();
+
+        if (bundledPreferred && bundledAvailable) {
+            return RovinLaunchTarget.ready(
+                    ROVIN_ASSET_URI_PREFIX + BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH,
+                    getString(R.string.rovin_landing_description_bundled),
+                    true,
+                    true
+            );
+        }
+
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_HOSTED_GAME_URL)) {
+            final String status = bundledPreferred && !bundledAvailable
+                    ? getString(R.string.rovin_landing_error_bundled_missing)
+                    : getString(R.string.rovin_landing_description);
+            return RovinLaunchTarget.ready(BuildConfig.ROVIN_HOSTED_GAME_URL, status, bundledPreferred, bundledAvailable);
+        }
+
+        return RovinLaunchTarget.error(
+                getString(R.string.rovin_landing_error_missing_target),
+                bundledPreferred,
+                bundledAvailable
+        );
+    }
+
+    private boolean hasBundledGameAsset() {
+        if (!BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED || StringUtils.isEmpty(BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH)) {
+            return false;
+        }
+
+        try (InputStream ignored = getAssets().open(BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH)) {
+            return true;
+        } catch (IOException e) {
+            Log.w(LOGTAG, "Bundled Rovin asset is missing: " + BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH, e);
+            return false;
+        }
+    }
+
+    @Nullable
+    private String getRecoveryBrowserUrl(@NonNull RovinLaunchTarget target) {
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_HOSTED_GAME_URL)) {
+            return BuildConfig.ROVIN_HOSTED_GAME_URL;
+        }
+
+        if (target.valid && !StringUtils.isEmpty(target.url)) {
+            return target.url;
+        }
+
+        final String homepage = SettingsStore.getInstance(this).getHomepage();
+        return StringUtils.isEmpty(homepage) ? null : homepage;
     }
 
     private ConnectivityReceiver.Delegate mConnectivityDelegate = connected -> {

@@ -14,8 +14,6 @@ import com.igalia.wolvic.utils.SystemUtils;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.blink.mojom.DisplayMode;
-import org.chromium.components.find_in_page.FindMatchRectsDetails;
-import org.chromium.components.find_in_page.FindNotificationDetails;
 import org.chromium.content_public.browser.InvalidateTypes;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content_public.browser.WebContents;
@@ -35,9 +33,7 @@ public class TabWebContentsDelegate extends WolvicWebContentsDelegate {
 
     private boolean mIsFullscreen;
 
-    public interface FindInPageDelegate {
-        void onFindResultAvailable(@NonNull final FindNotificationDetails details);
-    }
+    public interface FindInPageDelegate {}
 
     public TabWebContentsDelegate(@NonNull SessionImpl session, WebContents webContents) {
         mSession = session;
@@ -180,11 +176,4 @@ public class TabWebContentsDelegate extends WolvicWebContentsDelegate {
         });
     }
 
-    @Override
-    protected void onFindResultAvailable(FindNotificationDetails findNotificationDetails) {
-        FindInPageDelegate delegate = mSession.getFindInPageDelegate();
-        if (delegate != null) {
-            delegate.onFindResultAvailable(findNotificationDetails);
-        }
-    }
 }

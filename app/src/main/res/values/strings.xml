@@ -2618,4 +2618,13 @@ the Select` button. When clicked it bookmarks all the previously selected tabs -
     <!-- Shown in the controller options view when disabling the hand tracking switch -->
     <string name="disable_hand_tracking_dialog_body">Hand tracking is disabled temporarily. It will be automatically re-enabled on next launch. This option is not persistent on purpose to avoid issues when controllers are unavailable.</string>
 
+    <string name="rovin_landing_title">Rovin Browser</string>
+    <string name="rovin_landing_body">Rovin Games presents %1$s</string>
+    <string name="rovin_landing_description">Open the hosted Rovin Browser build and start the WebXR experience when you are ready.</string>
+    <string name="rovin_landing_description_bundled">Open the packaged Rovin Browser build and start the WebXR experience when you are ready.</string>
+    <string name="rovin_landing_error_missing_target">No valid Rovin launch target is configured yet. Retry after staging bundled content or restoring the hosted URL.</string>
+    <string name="rovin_landing_error_bundled_missing">Packaged content was enabled, but the local game entry was not found. Rovin Browser can still fall back to the hosted build.</string>
+    <string name="rovin_landing_play_resume">Open Neon Chuk</string>
+    <string name="rovin_landing_recovery_browser">Open Browser Fallback</string>
+    <string name="rovin_landing_retry">Try Again</string>
 </resources>

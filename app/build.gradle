@@ -108,7 +108,7 @@ android {
     namespace 'com.igalia.wolvic'
     compileSdkVersion 35
     defaultConfig {
-        applicationId "com.igalia.wolvic"
+        applicationId "com.rovingames.browser"
         minSdkVersion 24
         targetSdkVersion 34
         versionCode generatedVersionCode
@@ -128,10 +128,14 @@ android {
         buildConfigField 'String', 'ANNOUNCEMENTS_ENDPOINT', '"https://igalia.github.io/wolvic/announcements.json"'
         buildConfigField 'String', 'EXPERIENCES_ENDPOINT', '"https://igalia.github.io/wolvic/experiences.json"'
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
+        buildConfigField 'String', 'ROVIN_HOSTED_GAME_URL', '"https://neon-chuck-webxr-b95226.gitlab.io/"'
+        buildConfigField 'String', 'ROVIN_GAME_TITLE', '"Neon Chuk"'
+        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'false'
+        buildConfigField 'String', 'ROVIN_BUNDLED_ASSET_RELATIVE_PATH', '"rovin-game/index.html"'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue 'string', 'app_name', 'Wolvic'
-        resValue 'string', 'HOMEPAGE_URL', "https://wolvic.com/start"
+        resValue 'string', 'app_name', 'Rovin Browser'
+        resValue 'string', 'HOMEPAGE_URL', "https://neon-chuck-webxr-b95226.gitlab.io/"
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++14 -fexceptions -frtti -Werror" +
@@ -157,7 +161,7 @@ android {
     }
 
     base {
-        archivesName = "Wolvic"
+        archivesName = "RovinBrowser"
     }
 
     compileOptions {
@@ -321,7 +325,7 @@ android {
 
         visionglass {
             dimension "platform"
-            applicationId "com.igalia.wolvic"
+            applicationId "com.rovingames.browser"
             applicationIdSuffix ".visionglass"
             resValue "string", "app_name", "Wolvic Vision"
             targetSdkVersion 33
@@ -365,7 +369,7 @@ android {
 
         chromium {
             dimension "backend"
-            resValue "string", "app_name", "Wolvic Chromium"
+            resValue "string", "app_name", "Rovin Browser"
             externalNativeBuild {
                 cmake {
                     cppFlags " -DCHROMIUM"
@@ -396,7 +400,7 @@ android {
         }
 
         mainlandChina {
-            applicationId "com.cn.igalia.wolvic"
+            applicationId "com.rovingames.browser"
             dimension "store"
             buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "true"
             buildConfigField "Boolean", "WEBVIEW_IN_PHONE_UI", "true"
