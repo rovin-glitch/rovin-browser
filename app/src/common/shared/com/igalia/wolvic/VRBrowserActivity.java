@@ -407,6 +407,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         mSettings = SettingsStore.getInstance(this);
         mSettings.initModel(this);
+        mSettings.setEnvironment(SettingsStore.ENV_DEFAULT);
+        mSettings.setTermsServiceAccepted(true);
+        mSettings.setPrivacyPolicyAccepted(true);
 
         mPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         mPrefs.registerOnSharedPreferenceChangeListener(this);
@@ -1013,7 +1016,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 }
             }
         } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
-            showRovinLanding();
+            final RovinLaunchTarget target = resolveRovinLaunchTarget();
+            if (target.valid && !StringUtils.isEmpty(target.url)) {
+                launchRovinExperience(target);
+            } else {
+                showRovinLanding();
+            }
         } else {
             Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + mWindows.getFocusedWindow().getSession().getCurrentUri());
         }
@@ -1066,7 +1074,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinLandingWidget = null;
         }
 
+        setPrimaryBrowserChromeVisible(false);
         mWindows.openInKioskMode(target.url);
+        setPrimaryBrowserChromeVisible(false);
     }
 
     private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {
@@ -1097,12 +1107,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private void setPrimaryBrowserChromeVisible(boolean visible) {
         if (mNavigationBar != null) {
             mNavigationBar.setVisible(visible);
+            updateWidget(mNavigationBar);
         }
         if (mTray != null) {
             mTray.setVisible(visible);
+            updateWidget(mTray);
         }
         if (mTabsBar != null) {
             mTabsBar.setVisible(visible);
+            updateWidget(mTabsBar);
         }
     }
 
