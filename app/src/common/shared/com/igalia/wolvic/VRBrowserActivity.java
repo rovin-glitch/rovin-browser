@@ -284,7 +284,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private Widget mActiveDialog;
     private Set<String> mPoorPerformanceAllowList;
     private float mCurrentCylinderDensity = 0;
-    private boolean mHideWebXRIntersitial = false;
+    private static final boolean ROVIN_DISABLE_WEBXR_INTERSTITIAL = true;
+    private boolean mHideWebXRIntersitial = true;
     private FragmentController mFragmentController;
     private LinkedHashMap<Integer, WidgetPlacement> mPendingNativeWidgetUpdates = new LinkedHashMap<>();
     private ScheduledThreadPoolExecutor mPendingNativeWidgetUpdatesExecutor = new ScheduledThreadPoolExecutor(1);
@@ -468,8 +469,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         // Create keyboard widget
         mKeyboard = new KeyboardWidget(this);
 
-        // Create the WebXR interstitial
-        mWebXRInterstitial = new WebXRInterstitialWidget(this);
+        if (!ROVIN_DISABLE_WEBXR_INTERSTITIAL) {
+            mWebXRInterstitial = new WebXRInterstitialWidget(this);
+        }
 
         // Windows
         mWindows = new Windows(this);
@@ -534,7 +536,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         attachToWindow(mWindows.getFocusedWindow(), null);
 
-        addWidgets(Arrays.asList(mRootWidget, mNavigationBar, mKeyboard, mTray, mTabsBar, mWebXRInterstitial));
+        if (mWebXRInterstitial != null) {
+            addWidgets(Arrays.asList(mRootWidget, mNavigationBar, mKeyboard, mTray, mTabsBar, mWebXRInterstitial));
+        } else {
+            addWidgets(Arrays.asList(mRootWidget, mNavigationBar, mKeyboard, mTray, mTabsBar));
+        }
 
         // Create the platform plugin after widgets are created to be extra safe.
         mPlatformPlugin = createPlatformPlugin(this);
@@ -864,6 +870,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     void loadFromIntent(final Intent intent) {
+        if (mHideWebXRIntersitial) {
+            setWebXRIntersitialState(WEBXR_INTERSTITIAL_HIDDEN);
+        }
+
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG,"Loading from crash Intent");
         }
