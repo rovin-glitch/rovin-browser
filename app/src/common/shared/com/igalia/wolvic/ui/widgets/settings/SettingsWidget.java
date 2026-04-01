@@ -28,6 +28,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.VRBrowserApplication;
 import com.igalia.wolvic.audio.AudioEngine;
@@ -272,6 +273,13 @@ public class SettingsWidget extends UIDialog implements SettingsView.Delegate {
             onDismiss();
         });
 
+        if (RovinProduct.isRuntime()) {
+            mBinding.environmentButton.setVisibility(View.GONE);
+            mBinding.helpButton.setVisibility(View.GONE);
+            mBinding.surveyLink.setVisibility(View.GONE);
+            mBinding.whatsNewButton.setVisibility(View.GONE);
+        }
+
         mCurrentView = null;
     }
 
@@ -456,9 +464,17 @@ public class SettingsWidget extends UIDialog implements SettingsView.Delegate {
                 showView(new ContentLanguageOptionsView(getContext(), mWidgetManager));
                 break;
             case LANGUAGE_VOICE_SERVICE:
+                if (!RovinProduct.shouldShowVoiceSearchSettings()) {
+                    showView(SettingsView.SettingViewType.LANGUAGE);
+                    break;
+                }
                 showView(new VoiceSearchServiceOptionsView(getContext(), mWidgetManager));
                 break;
             case LANGUAGE_VOICE:
+                if (!RovinProduct.shouldShowVoiceSearchSettings()) {
+                    showView(SettingsView.SettingViewType.LANGUAGE);
+                    break;
+                }
                 showView(new VoiceSearchLanguageOptionsView(getContext(), mWidgetManager));
                 break;
             case DISPLAY:
@@ -480,6 +496,10 @@ public class SettingsWidget extends UIDialog implements SettingsView.Delegate {
                 showView(new FxAAccountOptionsView(getContext(), mWidgetManager));
                 break;
             case ENVIRONMENT:
+                if (!RovinProduct.shouldShowEnvironmentSettings()) {
+                    showView(SettingsView.SettingViewType.MAIN);
+                    break;
+                }
                 showView(new EnvironmentOptionsView(getContext(), mWidgetManager));
                 break;
             case CONTROLLER:

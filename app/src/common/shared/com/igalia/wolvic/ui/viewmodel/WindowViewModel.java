@@ -20,6 +20,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.browser.SettingsStore;
 import com.igalia.wolvic.browser.api.WContentBlocking;
 import com.igalia.wolvic.ui.widgets.Windows;
@@ -146,7 +147,7 @@ public class WindowViewModel extends AndroidViewModel {
         hint.setValue(getHintValue());
 
         isLoading = new MutableLiveData<>(new ObservableBoolean(false));
-        isMicrophoneEnabled = new MutableLiveData<>(new ObservableBoolean(true));
+        isMicrophoneEnabled = new MutableLiveData<>(new ObservableBoolean(RovinProduct.shouldShowVoiceSearchSettings()));
         isBookmarked = new MutableLiveData<>(new ObservableBoolean(false));
         isWebApp = new MutableLiveData<>(new ObservableBoolean(false));
         isFocused = new MutableLiveData<>(new ObservableBoolean(false));

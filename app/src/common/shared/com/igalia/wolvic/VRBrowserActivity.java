@@ -431,9 +431,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         getServicesProvider().getConnectivityReceiver().addListener(mConnectivityDelegate);
 
-        GeolocationWrapper.INSTANCE.update(this);
+        if (RovinProduct.shouldInitializeGeolocation()) {
+            GeolocationWrapper.INSTANCE.update(this);
+        }
 
-        initializeSpeechRecognizer();
+        if (RovinProduct.shouldInitializeSpeechRecognizer()) {
+            initializeSpeechRecognizer();
+        } else {
+            ((VRBrowserApplication) getApplication()).setSpeechRecognizer(null);
+        }
 
         mPoorPerformanceAllowList = new HashSet<>();
 
@@ -647,7 +653,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void showWhatsNewDialogIfNeeded() {
-        if (SettingsStore.getInstance(this).isWhatsNewDisplayed() || mWindows.getFocusedWindow().isKioskMode()
+        if (!RovinProduct.shouldShowWhatsNew()
+            || SettingsStore.getInstance(this).isWhatsNewDisplayed() || mWindows.getFocusedWindow().isKioskMode()
             || BuildConfig.FLAVOR_backend.equals("chromium")) {
             return;
         }
@@ -2279,7 +2286,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     public void keyboardDismissed() {
-        mNavigationBar.showVoiceSearch();
+        if (RovinProduct.shouldShowVoiceSearchSettings()) {
+            mNavigationBar.showVoiceSearch();
+        }
     }
 
     @Override

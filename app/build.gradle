@@ -51,6 +51,21 @@ def getUseDebugSigningOnRelease = { ->
     return false
 }
 
+def getReleaseSigningValue = { propertyName ->
+    def fullPropertyName = "userProperties.${propertyName}"
+    if (gradle.hasProperty(fullPropertyName)) {
+        return gradle."$fullPropertyName"
+    }
+    return ""
+}
+
+def hasReleaseSigning = { ->
+    return !getReleaseSigningValue("releaseStoreFile").isEmpty() &&
+            !getReleaseSigningValue("releaseStorePassword").isEmpty() &&
+            !getReleaseSigningValue("releaseKeyAlias").isEmpty() &&
+            !getReleaseSigningValue("releaseKeyPassword").isEmpty()
+}
+
 def getHVRAppId = { ->
     if (gradle.hasProperty("userProperties.HVR_APP_ID")) {
         return gradle."userProperties.HVR_APP_ID"
@@ -102,7 +117,8 @@ def isWebKitAvailable = {
 
 // Version names for Gecko and Chromium releases.
 def GECKO_RELEASE_VERSION_NAME = '1.8.3'
-def CHROMIUM_RELEASE_VERSION_NAME = '1.2.3'
+def CHROMIUM_BROWSER_RELEASE_VERSION_NAME = '1.2.3-browser'
+def CHROMIUM_RUNTIME_RELEASE_VERSION_NAME = '1.0.0-runtime'
 
 android {
     namespace 'com.igalia.wolvic'
@@ -112,7 +128,7 @@ android {
         minSdkVersion 24
         targetSdkVersion 34
         versionCode generatedVersionCode
-        versionName "1.8.3"
+        versionName "1.0.0-dev"
         buildConfigField "String", "GIT_HASH", "\"${getGitHash()}\""
         buildConfigField "Boolean", "DISABLE_CRASH_RESTART", getCrashRestartDisabled()
         buildConfigField "String", "AMO_COLLECTION", "\"fxr\""
@@ -132,9 +148,10 @@ android {
         buildConfigField 'String', 'ROVIN_GAME_TITLE', '"Neon Chuk"'
         buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
         buildConfigField 'String', 'ROVIN_BUNDLED_ASSET_RELATIVE_PATH', '"rovin-game/index.html"'
+        buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue 'string', 'app_name', 'Rovin Browser'
+        resValue 'string', 'app_name', 'Rovin Runtime'
         resValue 'string', 'HOMEPAGE_URL', "https://neon-chuck-webxr-b95226.gitlab.io/"
         externalNativeBuild {
             cmake {
@@ -161,7 +178,18 @@ android {
     }
 
     base {
-        archivesName = "RovinBrowser"
+        archivesName = "RovinRuntime"
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning()) {
+                storeFile file(getReleaseSigningValue("releaseStoreFile"))
+                storePassword getReleaseSigningValue("releaseStorePassword")
+                keyAlias getReleaseSigningValue("releaseKeyAlias")
+                keyPassword getReleaseSigningValue("releaseKeyPassword")
+            }
+        }
     }
 
     compileOptions {
@@ -186,7 +214,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig getUseDebugSigningOnRelease() ? debug.signingConfig : release.signingConfig
+            signingConfig ((getUseDebugSigningOnRelease() || !hasReleaseSigning()) ? signingConfigs.debug : signingConfigs.release)
             buildConfigField "String", "MK_API_KEY", "\"${getMKApiKey()}\""
         }
         debug {
@@ -217,19 +245,21 @@ android {
 
     applicationVariants.configureEach { variant ->
         // Use different version names for release builds for each backend.
-        def backend = variant.productFlavors.get(2).name
+        def backend = variant.productFlavors.find { it.dimension == "backend" }?.name
+        def product = variant.productFlavors.find { it.dimension == "product" }?.name
         variant.outputs.each { output ->
             if (variant.buildType.name == "release") {
                 if (backend == "gecko") {
                     output.versionNameOverride = GECKO_RELEASE_VERSION_NAME
                 } else if (backend == "chromium") {
-                    output.versionNameOverride = CHROMIUM_RELEASE_VERSION_NAME
+                    output.versionNameOverride = product == "browser" ? CHROMIUM_BROWSER_RELEASE_VERSION_NAME : CHROMIUM_RUNTIME_RELEASE_VERSION_NAME
                 }
             }
+            def platform = variant.productFlavors.find { it.dimension == "platform" }?.name
             if (shouldUseStaticVersionCode()) {
                 // Overrides any build created with a generated version code from now to 2115
                 output.versionCodeOverride = 1_99_365_2300
-            } else if (variant.productFlavors[0].name.toLowerCase().startsWith('picoxr')) {
+            } else if (platform != null && platform.toLowerCase().startsWith('picoxr')) {
                 // PICO store requires a slightly different version code.
                 output.versionCodeOverride = generatedVersionCode + 1900000000
             }
@@ -369,7 +399,6 @@ android {
 
         chromium {
             dimension "backend"
-            resValue "string", "app_name", "Rovin Browser"
             externalNativeBuild {
                 cmake {
                     cppFlags " -DCHROMIUM"
@@ -382,6 +411,18 @@ android {
 
         webkit {
             dimension "backend"
+        }
+
+        runtime {
+            dimension "product"
+            buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
+            resValue "string", "app_name", "Rovin Runtime"
+        }
+
+        browser {
+            dimension "product"
+            buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'false'
+            resValue "string", "app_name", "Rovin Browser"
         }
 
         // Stores flavor
@@ -413,10 +454,10 @@ android {
     }
 
     variantFilter { variant ->
-        def platform = variant.getFlavors().get(0).name
-        def abi = variant.getFlavors().get(1).name
-        def backend = variant.getFlavors().get(2).name
-        def store = variant.getFlavors().get(3).name
+        def platform = variant.getFlavors().find { it.dimension == "platform" }?.name
+        def abi = variant.getFlavors().find { it.dimension == "abi" }?.name
+        def backend = variant.getFlavors().find { it.dimension == "backend" }?.name
+        def store = variant.getFlavors().find { it.dimension == "store" }?.name
 
         // Create x64 variants only for noapi and aosp platforms
         if (abi == 'x64')
@@ -444,8 +485,8 @@ android {
 
     androidComponents {
         onVariants(selector().all()) { variant ->
-            def platform = variant.productFlavors.get(0).second
-            def store = variant.productFlavors.get(3).second
+            def platform = variant.productFlavors.find { it.first == "platform" }?.second
+            def store = variant.productFlavors.find { it.first == "store" }?.second
 
             // Adjust the applicationId so it matches what the store expects.
             if (platform == "visionglass" && store == "generic") {
@@ -558,7 +599,7 @@ android {
 
 
     buildFeatures {
-        flavorDimensions = [ "platform", "abi", "backend", "store" ]
+        flavorDimensions = [ "platform", "abi", "backend", "product", "store" ]
         viewBinding true
         prefab true // enable prefab support for various SDK AAR
         dataBinding true
@@ -761,8 +802,8 @@ android.applicationVariants.configureEach { variant ->
         buildConfigField 'String', 'MLS_TOKEN', '""'
     }
 
-    def platform = variant.productFlavors.get(0).name
-    def store = variant.productFlavors.get(3).name
+    def platform = variant.productFlavors.find { it.dimension == "platform" }?.name
+    def store = variant.productFlavors.find { it.dimension == "store" }?.name
 
     // Default homepages and voice recognition services for China releases.
     // HVR packages for mainland china must only use HVR speech recognition system.

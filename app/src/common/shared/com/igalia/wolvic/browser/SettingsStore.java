@@ -19,6 +19,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.VRBrowserApplication;
 import com.igalia.wolvic.browser.api.WContentBlocking;
@@ -231,6 +232,10 @@ public class SettingsStore {
         mSettingsViewModel.setHeyVRExperiences(heyVRJson);
 
         mSettingsViewModel.refresh();
+
+        if (!RovinProduct.shouldFetchRemoteContent()) {
+            return;
+        }
 
         updateRemoteContent(BuildConfig.PROPS_ENDPOINT,
                 R.string.settings_key_remote_props,

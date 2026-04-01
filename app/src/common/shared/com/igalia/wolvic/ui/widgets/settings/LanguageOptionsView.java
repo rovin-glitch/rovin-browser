@@ -20,6 +20,7 @@ import androidx.annotation.NonNull;
 import androidx.databinding.DataBindingUtil;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.browser.SettingsStore;
 import com.igalia.wolvic.databinding.OptionsLanguageBinding;
 import com.igalia.wolvic.speech.SpeechServices;
@@ -79,6 +80,13 @@ class LanguageOptionsView extends SettingsView {
         setVoiceLanguage();
         setContentLanguage();
         setDisplayLanguage();
+
+        if (!RovinProduct.shouldShowVoiceSearchSettings()) {
+            mBinding.voiceSearchServiceButton.setVisibility(GONE);
+            mBinding.voiceSearchServiceDescription.setVisibility(GONE);
+            mBinding.voiceSearchLanguageButton.setVisibility(GONE);
+            mBinding.voiceSearchLanguageDescription.setVisibility(GONE);
+        }
     }
 
     @Override
