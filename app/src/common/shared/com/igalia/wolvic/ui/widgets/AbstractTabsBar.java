@@ -9,6 +9,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.browser.Accounts;
 import com.igalia.wolvic.browser.SessionChangeListener;
@@ -60,8 +61,12 @@ public abstract class AbstractTabsBar extends UIWidget implements SessionChangeL
                 .get(String.valueOf(mAttachedWindow.hashCode()), WindowViewModel.class);
         mWindowViewModel.getIsTabsBarVisible().observe((VRBrowserActivity) getContext(), mIsTabsBarVisibleObserver);
 
-        mAccounts.addAccountListener(this);
-        mSyncAccountEnabled.postValue(mAccounts.isSignedIn());
+        if (!RovinProduct.shouldShowAccountFlows()) {
+            mSyncAccountEnabled.postValue(false);
+        } else {
+            mAccounts.addAccountListener(this);
+            mSyncAccountEnabled.postValue(mAccounts.isSignedIn());
+        }
 
         updateWidgetPlacement();
         refreshTabs();
@@ -73,7 +78,9 @@ public abstract class AbstractTabsBar extends UIWidget implements SessionChangeL
             mWindowViewModel.getIsTabsBarVisible().removeObserver(mIsTabsBarVisibleObserver);
             mWindowViewModel = null;
         }
-        mAccounts.removeAccountListener(this);
+        if (RovinProduct.shouldShowAccountFlows()) {
+            mAccounts.removeAccountListener(this);
+        }
         mAttachedWindow = null;
     }
 

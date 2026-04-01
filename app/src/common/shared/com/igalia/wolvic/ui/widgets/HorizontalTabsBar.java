@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.browser.SettingsStore;
 import com.igalia.wolvic.browser.engine.SessionStore;
@@ -40,6 +41,9 @@ public class HorizontalTabsBar extends AbstractTabsBar {
         mBinding.addTab.setOnClickListener(v -> mTabDelegate.onTabAdd());
 
         mBinding.syncTabs.setOnClickListener(v -> mTabDelegate.onTabSync());
+        if (!RovinProduct.shouldShowAccountFlows()) {
+            mBinding.syncTabs.setVisibility(GONE);
+        }
 
         mLayoutManager = new LinearLayoutManager(getContext());
         mLayoutManager.setOrientation(RecyclerView.HORIZONTAL);
