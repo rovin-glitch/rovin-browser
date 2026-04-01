@@ -18,6 +18,7 @@ import android.view.View;
 import androidx.databinding.DataBindingUtil;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.browser.SettingsStore;
 import com.igalia.wolvic.browser.api.WRuntime;
 import com.igalia.wolvic.browser.api.WSession;
@@ -89,7 +90,11 @@ class PrivacyOptionsView extends SettingsView {
         mBinding.permissionsTitle.setText(getContext().getString(R.string.security_options_permissions_title, getContext().getString(R.string.app_name)));
 
         mPermissionButtons = new ArrayList<>();
-        mPermissionButtons.add(Pair.create(mBinding.microphonePermissionSwitch, Manifest.permission.RECORD_AUDIO));
+        if (RovinProduct.shouldShowVoiceSearchSettings()) {
+            mPermissionButtons.add(Pair.create(mBinding.microphonePermissionSwitch, Manifest.permission.RECORD_AUDIO));
+        } else {
+            mBinding.microphonePermissionSwitch.setVisibility(View.GONE);
+        }
 
         if (DeviceType.isOculusBuild()) {
             mBinding.cameraPermissionSwitch.setVisibility(View.GONE);
@@ -123,8 +128,13 @@ class PrivacyOptionsView extends SettingsView {
         mBinding.notificationsPermissionSwitch.setOnCheckedChangeListener(mNotificationsListener);
         setNotifications(SettingsStore.getInstance(getContext()).isNotificationsEnabled(), false);
 
-        mBinding.speechDataSwitch.setOnCheckedChangeListener(mSpeechDataListener);
-        setSpeechData(SettingsStore.getInstance(getContext()).isSpeechDataCollectionEnabled(), false);
+        if (RovinProduct.shouldShowVoiceSearchSettings()) {
+            mBinding.speechDataSwitch.setOnCheckedChangeListener(mSpeechDataListener);
+            setSpeechData(SettingsStore.getInstance(getContext()).isSpeechDataCollectionEnabled(), false);
+        } else {
+            mBinding.dataCollectionTitle.setVisibility(View.GONE);
+            mBinding.speechDataSwitch.setVisibility(View.GONE);
+        }
 
         mBinding.telemetryDataSwitch.setOnCheckedChangeListener(mTelemetryListener);
         setTelemetry(SettingsStore.getInstance(getContext()).isTelemetryEnabled(), false);
@@ -164,7 +174,11 @@ class PrivacyOptionsView extends SettingsView {
         mBinding.trackingProtectionRadio.setOnCheckedChangeListener(mTrackingProtectionListener);
         setTrackingProtection(mBinding.trackingProtectionRadio.getIdForValue(etpLevel), false);
 
-        mBinding.loginsAndPasswords.setOnClickListener(view -> mDelegate.showView(SettingViewType.LOGINS_AND_PASSWORDS));
+        if (RovinProduct.shouldShowAccountFlows()) {
+            mBinding.loginsAndPasswords.setOnClickListener(view -> mDelegate.showView(SettingViewType.LOGINS_AND_PASSWORDS));
+        } else {
+            mBinding.loginsAndPasswords.setVisibility(View.GONE);
+        }
     }
 
     private void togglePermission(SwitchSetting aButton, String aPermission) {
@@ -259,10 +273,12 @@ class PrivacyOptionsView extends SettingsView {
             setNotifications(SettingsStore.NOTIFICATIONS_DEFAULT, true);
         }
 
-        if (mBinding.speechDataSwitch.isChecked() != SettingsStore.SPEECH_DATA_COLLECTION_DEFAULT) {
-            setSpeechData(SettingsStore.SPEECH_DATA_COLLECTION_DEFAULT, true);
+        if (RovinProduct.shouldShowVoiceSearchSettings()) {
+            if (mBinding.speechDataSwitch.isChecked() != SettingsStore.SPEECH_DATA_COLLECTION_DEFAULT) {
+                setSpeechData(SettingsStore.SPEECH_DATA_COLLECTION_DEFAULT, true);
+            }
+            SettingsStore.getInstance(getContext()).setSpeechDataCollectionReviewed(false);
         }
-        SettingsStore.getInstance(getContext()).setSpeechDataCollectionReviewed(false);
 
         if (mBinding.telemetryDataSwitch.isChecked() != SettingsStore.TELEMETRY_DEFAULT) {
             setTelemetry(SettingsStore.TELEMETRY_DEFAULT, true);
