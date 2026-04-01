@@ -15,6 +15,7 @@ import androidx.databinding.DataBindingUtil;
 
 import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.VRBrowserApplication;
 import com.igalia.wolvic.addons.views.AddonsView;
@@ -69,7 +70,7 @@ public class LibraryPanel extends FrameLayout {
         mDownloadsView = new DownloadsView(getContext(), this);
         mAddonsView = new AddonsView(getContext(), this);
         mSystemNotificationsView = new SystemNotificationsView(getContext(), this);
-        mCurrentPanel = Windows.ContentType.BOOKMARKS;
+        mCurrentPanel = RovinProduct.isRuntime() ? Windows.ContentType.DOWNLOADS : Windows.ContentType.BOOKMARKS;
 
         updateUI();
     }
@@ -220,10 +221,25 @@ public class LibraryPanel extends FrameLayout {
             panelType = getSelectedPanelType();
         }
 
+        if (RovinProduct.isRuntime()) {
+            if (panelType != Windows.ContentType.DOWNLOADS) {
+                panelType = Windows.ContentType.DOWNLOADS;
+                mCurrentPanel = panelType;
+            }
+        }
+
         mBinding.tabcontent.removeAllViews();
 
         if (BuildConfig.FLAVOR_backend.equals("chromium")) {
             mBinding.addons.setVisibility(View.GONE);
+        }
+
+        if (RovinProduct.isRuntime()) {
+            mBinding.bookmarks.setVisibility(View.GONE);
+            mBinding.webApps.setVisibility(View.GONE);
+            mBinding.history.setVisibility(View.GONE);
+            mBinding.addons.setVisibility(View.GONE);
+            mBinding.notifications.setVisibility(View.GONE);
         }
 
         mBinding.bookmarks.setActiveMode(false);
