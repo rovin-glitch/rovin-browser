@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.browser.SettingsStore;
 import com.igalia.wolvic.browser.adapter.ComponentsAdapter;
@@ -200,7 +201,7 @@ public class HamburgerMenuWidget extends UIWidget implements
         if (!mWidgetManager.getFocusedWindow().isKioskMode()) {
             final Session activeSession = SessionStore.get().getActiveSession();
 
-            if (!BuildConfig.FLAVOR_backend.equals("chromium")) {
+            if (!BuildConfig.FLAVOR_backend.equals("chromium") && RovinProduct.shouldShowAddons()) {
                 mItems.add(new HamburgerMenuAdapter.MenuItem.Builder(
                         HamburgerMenuAdapter.MenuItem.TYPE_ADDONS_SETTINGS,
                         (menuItem) -> {

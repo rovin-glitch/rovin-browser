@@ -495,6 +495,10 @@ public class SettingsWidget extends UIDialog implements SettingsView.Delegate {
                 showView(new DeveloperOptionsView(getContext(), mWidgetManager));
                 break;
             case FXA:
+                if (!RovinProduct.shouldShowAccountFlows()) {
+                    showView(SettingsView.SettingViewType.MAIN);
+                    break;
+                }
                 showView(new FxAAccountOptionsView(getContext(), mWidgetManager));
                 break;
             case ENVIRONMENT:

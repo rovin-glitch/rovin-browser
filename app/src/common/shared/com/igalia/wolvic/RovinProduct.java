@@ -27,11 +27,23 @@ public final class RovinProduct {
         return !isRuntime();
     }
 
+    public static boolean shouldShowAccountFlows() {
+        return !isRuntime();
+    }
+
+    public static boolean shouldShowAddons() {
+        return !isRuntime();
+    }
+
     public static boolean shouldShowEnvironmentSettings() {
         return !isRuntime();
     }
 
     public static boolean shouldShowVoiceSearchSettings() {
+        return !isRuntime();
+    }
+
+    public static boolean shouldShowNavigationPromotions() {
         return !isRuntime();
     }
 }

@@ -36,6 +36,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.VRBrowserApplication;
 import com.igalia.wolvic.audio.AudioEngine;
@@ -300,6 +301,9 @@ public class NavigationBarWidget extends UIWidget implements WSession.Navigation
         });
 
         mBinding.navigationBarNavigation.whatsNew.setOnClickListener(v -> {
+            if (!RovinProduct.shouldShowNavigationPromotions()) {
+                return;
+            }
             v.requestFocusFromTouch();
             SettingsStore.getInstance(getContext()).setRemotePropsVersionName(BuildConfig.VERSION_NAME);
             RemoteProperties props = mSettingsViewModel.getProps().getValue().get(BuildConfig.VERSION_NAME);
@@ -309,10 +313,25 @@ public class NavigationBarWidget extends UIWidget implements WSession.Navigation
         });
 
         mBinding.navigationBarNavigation.userFeedbackButton.setOnClickListener(v -> {
+            if (!RovinProduct.shouldShowHelpAndFeedback()) {
+                return;
+            }
             v.requestFocusFromTouch();
             String uri = getResources().getString(R.string.feedback_link, BuildConfig.VERSION_NAME, DeviceType.getType());
             mWidgetManager.openNewPageNoInterrupt(uri);
         });
+
+        if (!RovinProduct.shouldShowNavigationPromotions()) {
+            mBinding.navigationBarNavigation.whatsNew.setVisibility(View.GONE);
+            View whatsNewContainer = (View) mBinding.navigationBarNavigation.whatsNew.getParent();
+            if (whatsNewContainer != null) {
+                whatsNewContainer.setVisibility(View.GONE);
+            }
+        }
+
+        if (!RovinProduct.shouldShowHelpAndFeedback()) {
+            mBinding.navigationBarNavigation.userFeedbackButton.setVisibility(View.GONE);
+        }
 
         mBinding.navigationBarNavigation.desktopModeButton.setOnClickListener(view -> {
             final int defaultUaMode = SettingsStore.getInstance(mAppContext).getUaMode();
@@ -1391,7 +1410,9 @@ public class NavigationBarWidget extends UIWidget implements WSession.Navigation
             public void onAddons() {
                 hideMenu();
 
-                mAttachedWindow.showLibrary(Windows.ContentType.ADDONS);
+                if (RovinProduct.shouldShowAddons()) {
+                    mAttachedWindow.showLibrary(Windows.ContentType.ADDONS);
+                }
             }
 
             @Override
@@ -1418,6 +1439,7 @@ public class NavigationBarWidget extends UIWidget implements WSession.Navigation
         });
         boolean isSendTabEnabled = false;
         if (!BuildConfig.FLAVOR_backend.equals("chromium") &&
+                RovinProduct.shouldShowAddons() &&
                 (URLUtil.isHttpUrl(mAttachedWindow.getSession().getCurrentUri()) ||
                 URLUtil.isHttpsUrl(mAttachedWindow.getSession().getCurrentUri()))) {
             isSendTabEnabled = true;
