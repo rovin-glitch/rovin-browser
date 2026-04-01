@@ -186,7 +186,7 @@
                             app:honeycombButtonText="@string/settings_fxa_account_sign_in"
                             app:honeycombButtonTextSize="@dimen/settings_main_button_text_width"
                             app:honeycombButtonIconHover="false"
-                            app:visibleGone="@{BuildConfig.FLAVOR_backend != &quot;chromium&quot;}"/>
+                            app:visibleGone="@{BuildConfig.FLAVOR_backend != &quot;chromium&quot; || BuildConfig.ROVIN_RUNTIME}"/>
 
                     </LinearLayout>
 
@@ -221,7 +221,7 @@
                             app:honeycombButtonIcon="@drawable/ic_icon_addons"
                             app:honeycombButtonText="@string/url_addons_title"
                             app:honeycombButtonTextSize="@dimen/settings_main_button_text_width"
-                            app:visibleGone="@{BuildConfig.FLAVOR_backend != &quot;chromium&quot;}"/>
+                            app:visibleGone="@{BuildConfig.FLAVOR_backend != &quot;chromium&quot; || BuildConfig.ROVIN_RUNTIME}"/>
 
                         <com.igalia.wolvic.ui.views.HoneycombButton
                             android:id="@+id/helpButton"

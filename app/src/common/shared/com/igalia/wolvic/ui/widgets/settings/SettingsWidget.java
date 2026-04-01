@@ -274,6 +274,8 @@ public class SettingsWidget extends UIDialog implements SettingsView.Delegate {
         });
 
         if (RovinProduct.isRuntime()) {
+            mBinding.fxaButton.setVisibility(View.GONE);
+            mBinding.addonsButton.setVisibility(View.GONE);
             mBinding.environmentButton.setVisibility(View.GONE);
             mBinding.helpButton.setVisibility(View.GONE);
             mBinding.surveyLink.setVisibility(View.GONE);
