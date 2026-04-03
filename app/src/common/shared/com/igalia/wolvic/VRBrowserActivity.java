@@ -148,7 +148,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
-    private static final String ROVIN_IMMERSIVE_BUTTON_XPATH = "//*[@id='neonchuk-vr-button'] | //button[contains(normalize-space(.), 'ENTER VR')]";
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static class RovinLaunchTarget {
         final String url;
@@ -1060,10 +1059,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         if (target.valid) {
-            mRovinLandingWidget.bindReady(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
+            mRovinLandingWidget.bindReady(BuildConfig.ROVIN_PRODUCT_TITLE, target.statusMessage);
             scheduleRovinAutoLaunch(target);
         } else {
-            mRovinLandingWidget.bindError(BuildConfig.ROVIN_GAME_TITLE, target.statusMessage);
+            mRovinLandingWidget.bindError(BuildConfig.ROVIN_PRODUCT_TITLE, target.statusMessage);
         }
 
         mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
@@ -1148,11 +1147,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             );
         }
 
-        if (!StringUtils.isEmpty(BuildConfig.ROVIN_HOSTED_GAME_URL)) {
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_FIXED_TARGET_URL)) {
             final String status = bundledPreferred && !bundledAvailable
                     ? getString(R.string.rovin_landing_error_bundled_missing)
                     : getString(R.string.rovin_landing_description);
-            return RovinLaunchTarget.ready(addRovinPauseBridgeCapability(BuildConfig.ROVIN_HOSTED_GAME_URL), status, bundledPreferred, bundledAvailable);
+            return RovinLaunchTarget.ready(addRovinPauseBridgeCapability(BuildConfig.ROVIN_FIXED_TARGET_URL), status, bundledPreferred, bundledAvailable);
         }
 
         return RovinLaunchTarget.error(
@@ -1163,14 +1162,14 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private boolean hasBundledGameAsset() {
-        if (!BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED || StringUtils.isEmpty(BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH)) {
+        if (!BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED || StringUtils.isEmpty(BuildConfig.ROVIN_BUNDLED_ENTRY_PATH)) {
             return false;
         }
 
-        try (InputStream ignored = getAssets().open(BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH)) {
+        try (InputStream ignored = getAssets().open(BuildConfig.ROVIN_BUNDLED_ENTRY_PATH)) {
             return true;
         } catch (IOException e) {
-            Log.w(LOGTAG, "Bundled Rovin asset is missing: " + BuildConfig.ROVIN_BUNDLED_ASSET_RELATIVE_PATH, e);
+            Log.w(LOGTAG, "Bundled runtime asset is missing: " + BuildConfig.ROVIN_BUNDLED_ENTRY_PATH, e);
             return false;
         }
     }
@@ -1182,22 +1181,22 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         if (mRovinAssetHttpServer == null) {
-            mRovinAssetHttpServer = new RovinAssetHttpServer(getAssets());
+            mRovinAssetHttpServer = new RovinAssetHttpServer(getAssets(), getBundledAssetRoot());
         }
 
         final String baseUrl = mRovinAssetHttpServer.start();
         if (StringUtils.isEmpty(baseUrl)) {
-            Log.e(LOGTAG, "Failed to start bundled Rovin asset server");
+            Log.e(LOGTAG, "Failed to start bundled runtime asset server");
             return null;
         }
 
-        return baseUrl + "index.html";
+        return baseUrl + getBundledEntryRequestPath();
     }
 
     @Nullable
     private String getRecoveryBrowserUrl(@NonNull RovinLaunchTarget target) {
-        if (!StringUtils.isEmpty(BuildConfig.ROVIN_HOSTED_GAME_URL)) {
-            return BuildConfig.ROVIN_HOSTED_GAME_URL;
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_FIXED_TARGET_URL)) {
+            return BuildConfig.ROVIN_FIXED_TARGET_URL;
         }
 
         if (target.valid && !StringUtils.isEmpty(target.url)) {
@@ -1214,6 +1213,24 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 .appendQueryParameter(ROVIN_PAUSE_BRIDGE_QUERY_PARAM, "1")
                 .build()
                 .toString();
+    }
+
+    @NonNull
+    private String getBundledAssetRoot() {
+        final int separatorIndex = BuildConfig.ROVIN_BUNDLED_ENTRY_PATH.lastIndexOf('/');
+        if (separatorIndex <= 0) {
+            return "";
+        }
+        return BuildConfig.ROVIN_BUNDLED_ENTRY_PATH.substring(0, separatorIndex);
+    }
+
+    @NonNull
+    private String getBundledEntryRequestPath() {
+        final int separatorIndex = BuildConfig.ROVIN_BUNDLED_ENTRY_PATH.lastIndexOf('/');
+        final String relativePath = separatorIndex >= 0
+                ? BuildConfig.ROVIN_BUNDLED_ENTRY_PATH.substring(separatorIndex + 1)
+                : BuildConfig.ROVIN_BUNDLED_ENTRY_PATH;
+        return Uri.encode(relativePath, "/");
     }
 
     private void scheduleRovinAutoLaunch(@NonNull RovinLaunchTarget target) {

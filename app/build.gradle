@@ -124,7 +124,7 @@ android {
     namespace 'com.igalia.wolvic'
     compileSdkVersion 35
     defaultConfig {
-        applicationId "com.rovingames.browser"
+        applicationId "com.rovingames.runtime"
         minSdkVersion 24
         targetSdkVersion 34
         versionCode generatedVersionCode
@@ -144,15 +144,15 @@ android {
         buildConfigField 'String', 'ANNOUNCEMENTS_ENDPOINT', '"https://igalia.github.io/wolvic/announcements.json"'
         buildConfigField 'String', 'EXPERIENCES_ENDPOINT', '"https://igalia.github.io/wolvic/experiences.json"'
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
-        buildConfigField 'String', 'ROVIN_HOSTED_GAME_URL', '"https://neon-chuck-webxr-b95226.gitlab.io/"'
-        buildConfigField 'String', 'ROVIN_GAME_TITLE', '"Neon Chuk"'
+        buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', '""'
+        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', '"Rovin Runtime"'
         buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
-        buildConfigField 'String', 'ROVIN_BUNDLED_ASSET_RELATIVE_PATH', '"rovin-game/index.html"'
+        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', '"bundled-app/index.html"'
         buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resValue 'string', 'app_name', 'Rovin Runtime'
-        resValue 'string', 'HOMEPAGE_URL', "https://neon-chuck-webxr-b95226.gitlab.io/"
+        resValue 'string', 'HOMEPAGE_URL', "https://example.invalid/"
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++14 -fexceptions -frtti -Werror" +
@@ -355,7 +355,7 @@ android {
 
         visionglass {
             dimension "platform"
-            applicationId "com.rovingames.browser"
+            applicationId "com.rovingames.runtime"
             applicationIdSuffix ".visionglass"
             resValue "string", "app_name", "Wolvic Vision"
             targetSdkVersion 33
@@ -441,7 +441,7 @@ android {
         }
 
         mainlandChina {
-            applicationId "com.rovingames.browser"
+            applicationId "com.rovingames.runtime"
             dimension "store"
             buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "true"
             buildConfigField "Boolean", "WEBVIEW_IN_PHONE_UI", "true"

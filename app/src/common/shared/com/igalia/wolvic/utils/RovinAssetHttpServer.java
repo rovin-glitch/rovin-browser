@@ -24,17 +24,18 @@ import java.util.concurrent.Executors;
 public class RovinAssetHttpServer {
     private static final String LOGTAG = SystemUtils.createLogtag(RovinAssetHttpServer.class);
     private static final String LOOPBACK_HOST = "127.0.0.1";
-    private static final String ASSET_ROOT = "rovin-game";
 
     private final AssetManager mAssets;
+    private final String mAssetRoot;
     private final ExecutorService mExecutor;
     private ServerSocket mServerSocket;
     private Thread mAcceptThread;
     private volatile boolean mRunning;
     private volatile int mPort = -1;
 
-    public RovinAssetHttpServer(@NonNull AssetManager assets) {
+    public RovinAssetHttpServer(@NonNull AssetManager assets, @Nullable String assetRoot) {
         mAssets = assets;
+        mAssetRoot = normalizeAssetRoot(assetRoot);
         mExecutor = Executors.newCachedThreadPool();
     }
 
@@ -161,7 +162,10 @@ public class RovinAssetHttpServer {
         if (path.contains("..")) {
             return null;
         }
-        return ASSET_ROOT + "/" + path;
+        if (mAssetRoot.isEmpty()) {
+            return path;
+        }
+        return mAssetRoot + "/" + path;
     }
 
     @Nullable
@@ -216,5 +220,21 @@ public class RovinAssetHttpServer {
         if (lowercase.endsWith(".mp3")) return "audio/mpeg";
         if (lowercase.endsWith(".wav")) return "audio/wav";
         return "application/octet-stream";
+    }
+
+    @NonNull
+    private static String normalizeAssetRoot(@Nullable String assetRoot) {
+        if (assetRoot == null) {
+            return "";
+        }
+
+        String normalized = assetRoot.trim();
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 }
