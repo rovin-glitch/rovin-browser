@@ -3,12 +3,14 @@ package com.igalia.wolvic.browser;
 import android.app.Application;
 import android.content.Context;
 import android.net.Uri;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.Observer;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.VRBrowserActivity;
 import com.igalia.wolvic.browser.api.WAllowOrDeny;
 import com.igalia.wolvic.browser.api.WAutocomplete;
 import com.igalia.wolvic.browser.api.WResult;
@@ -51,6 +53,8 @@ public class PromptDelegate implements
         WindowWidget.WindowListener,
         WSession.NavigationDelegate,
         WSession.ContentDelegate {
+    private static final String LOGTAG = "PromptDelegate";
+    private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
 
     private PromptWidget mPrompt;
     private ConfirmPromptWidget mSlowScriptPrompt;
@@ -204,6 +208,10 @@ public class PromptDelegate implements
     public WResult<PromptResponse> onTextPrompt(@NonNull WSession session, @NonNull TextPrompt textPrompt) {
         final WResult<PromptResponse> result = WResult.create();
 
+        if (handleRovinHapticPrompt(textPrompt, result)) {
+            return result;
+        }
+
         mPrompt = new TextPromptWidget(mContext);
         mPrompt.getPlacement().parentHandle = mAttachedWindow.getHandle();
         mPrompt.getPlacement().parentAnchorY = 0.0f;
@@ -225,6 +233,45 @@ public class PromptDelegate implements
         mPrompt.show(UIWidget.REQUEST_FOCUS, true);
 
         return result;
+    }
+
+    private boolean handleRovinHapticPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_HAPTIC_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+
+        final String payload = textPrompt.defaultValue();
+        if (payload == null || payload.isBlank()) {
+            result.complete(textPrompt.confirm(""));
+            return true;
+        }
+
+        final String[] parts = payload.split("\\|");
+        if (parts.length < 3) {
+            Log.w(LOGTAG, "Ignoring malformed Rovin haptic payload: " + payload);
+            result.complete(textPrompt.confirm(""));
+            return true;
+        }
+
+        final int controllerId = "right".equals(parts[0]) ? 0 : 1;
+        float pulseDuration = 50.0f;
+        float pulseIntensity = 0.5f;
+        try {
+            pulseDuration = Math.max(1.0f, Math.min(500.0f, Float.parseFloat(parts[1])));
+            pulseIntensity = Math.max(0.0f, Math.min(1.0f, Float.parseFloat(parts[2])));
+        } catch (NumberFormatException error) {
+            Log.w(LOGTAG, "Ignoring malformed Rovin haptic values: " + payload, error);
+        }
+
+        activity.triggerHapticPulse(pulseDuration, pulseIntensity, controllerId);
+        result.complete(textPrompt.confirm(""));
+        return true;
     }
 
     @Nullable

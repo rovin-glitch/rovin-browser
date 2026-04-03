@@ -140,6 +140,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_HIDE_WHATS_NEW = "hide_whats_new";
     public static final String EXTRA_KIOSK = "kiosk";
     private static final String ROVIN_PAUSE_BRIDGE_QUERY_PARAM = "rovinPauseBridge";
+    private static final String ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM = "rovinNativeHaptics";
     private static final long BATTERY_UPDATE_INTERVAL = 60 * 1_000_000_000L; // 60 seconds
 
     private boolean mLaunchImmersive = false;
@@ -1140,7 +1141,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 );
             }
             return RovinLaunchTarget.ready(
-                    addRovinPauseBridgeCapability(bundledUrl),
+                    addRovinBridgeCapabilities(bundledUrl),
                     getString(R.string.rovin_landing_description_bundled),
                     true,
                     true
@@ -1151,7 +1152,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             final String status = bundledPreferred && !bundledAvailable
                     ? getString(R.string.rovin_landing_error_bundled_missing)
                     : getString(R.string.rovin_landing_description);
-            return RovinLaunchTarget.ready(addRovinPauseBridgeCapability(BuildConfig.ROVIN_FIXED_TARGET_URL), status, bundledPreferred, bundledAvailable);
+            return RovinLaunchTarget.ready(addRovinBridgeCapabilities(BuildConfig.ROVIN_FIXED_TARGET_URL), status, bundledPreferred, bundledAvailable);
         }
 
         return RovinLaunchTarget.error(
@@ -1208,9 +1209,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @NonNull
-    private String addRovinPauseBridgeCapability(@NonNull String url) {
+    private String addRovinBridgeCapabilities(@NonNull String url) {
         return Uri.parse(url).buildUpon()
                 .appendQueryParameter(ROVIN_PAUSE_BRIDGE_QUERY_PARAM, "1")
+                .appendQueryParameter(ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM, "1")
                 .build()
                 .toString();
     }
@@ -2294,6 +2296,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (settings.isHapticFeedbackEnabled()) {
             queueRunnable(() -> triggerHapticFeedbackNative(settings.getHapticPulseDuration(), settings.getHapticPulseIntensity(), controllerId));
         }
+    }
+
+    public void triggerHapticPulse(float pulseDuration, float pulseIntensity, int controllerId) {
+        queueRunnable(() -> triggerHapticFeedbackNative(pulseDuration, pulseIntensity, controllerId));
     }
 
     @Override
