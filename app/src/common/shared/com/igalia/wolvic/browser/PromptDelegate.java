@@ -11,6 +11,8 @@ import androidx.lifecycle.Observer;
 
 import com.igalia.wolvic.R;
 import com.igalia.wolvic.VRBrowserActivity;
+import com.igalia.wolvic.BuildConfig;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.browser.api.WAllowOrDeny;
 import com.igalia.wolvic.browser.api.WAutocomplete;
 import com.igalia.wolvic.browser.api.WResult;
@@ -41,11 +43,20 @@ import com.igalia.wolvic.ui.widgets.settings.SettingsView;
 import com.igalia.wolvic.utils.StringUtils;
 import com.igalia.wolvic.utils.UrlUtils;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import android.util.Base64;
 import mozilla.components.concept.storage.Login;
 
 public class PromptDelegate implements
@@ -55,6 +66,8 @@ public class PromptDelegate implements
         WSession.ContentDelegate {
     private static final String LOGTAG = "PromptDelegate";
     private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
+    private static final String ROVIN_SAVE_PROMPT_MESSAGE = "__rovin_save__";
+    private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
     private ConfirmPromptWidget mSlowScriptPrompt;
@@ -208,6 +221,10 @@ public class PromptDelegate implements
     public WResult<PromptResponse> onTextPrompt(@NonNull WSession session, @NonNull TextPrompt textPrompt) {
         final WResult<PromptResponse> result = WResult.create();
 
+        if (handleRovinSavePrompt(textPrompt, result)) {
+            return result;
+        }
+
         if (handleRovinHapticPrompt(textPrompt, result)) {
             return result;
         }
@@ -233,6 +250,73 @@ public class PromptDelegate implements
         mPrompt.show(UIWidget.REQUEST_FOCUS, true);
 
         return result;
+    }
+
+    private boolean handleRovinSavePrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_SAVE_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!RovinProduct.isRuntime() || !(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.confirm("error|not_runtime"));
+            return true;
+        }
+
+        final Session engineSession = mAttachedWindow != null ? mAttachedWindow.getSession() : null;
+        final String currentUri = engineSession != null ? engineSession.getCurrentUri() : null;
+        if (!isTrustedRovinSaveOrigin(currentUri)) {
+            Log.w(LOGTAG, "Blocked Rovin save prompt from untrusted origin. uri=" + currentUri);
+            result.complete(textPrompt.confirm("error|untrusted_origin"));
+            return true;
+        }
+
+        final String payload = textPrompt.defaultValue();
+        if (payload == null || payload.isBlank()) {
+            result.complete(textPrompt.confirm("error|missing_command"));
+            return true;
+        }
+
+        try {
+            if ("get".equals(payload)) {
+                result.complete(textPrompt.confirm(readRovinSaveJson()));
+                return true;
+            }
+            if ("clear".equals(payload)) {
+                clearRovinSave();
+                result.complete(textPrompt.confirm("ok"));
+                return true;
+            }
+            if (payload.startsWith("set|")) {
+                final String encoded = payload.substring(4);
+                final byte[] decoded = Base64.decode(encoded, Base64.NO_WRAP);
+                if (decoded.length > ROVIN_SAVE_MAX_BYTES) {
+                    result.complete(textPrompt.confirm("error|too_large"));
+                    return true;
+                }
+                final String json = new String(decoded, StandardCharsets.UTF_8);
+                validateJsonObject(json);
+                writeRovinSaveAtomic(decoded);
+                result.complete(textPrompt.confirm("ok"));
+                return true;
+            }
+
+            result.complete(textPrompt.confirm("error|unknown_command"));
+            return true;
+        } catch (IllegalArgumentException error) {
+            result.complete(textPrompt.confirm("error|invalid_base64"));
+            return true;
+        } catch (JSONException error) {
+            result.complete(textPrompt.confirm("error|invalid_json"));
+            return true;
+        } catch (IOException error) {
+            Log.e(LOGTAG, "Rovin save IO failed.", error);
+            result.complete(textPrompt.confirm("error|io"));
+            return true;
+        } catch (Exception error) {
+            Log.e(LOGTAG, "Rovin save handler failed.", error);
+            result.complete(textPrompt.confirm("error|unexpected"));
+            return true;
+        }
     }
 
     private boolean handleRovinHapticPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
@@ -272,6 +356,105 @@ public class PromptDelegate implements
         activity.triggerHapticPulse(pulseDuration, pulseIntensity, controllerId);
         result.complete(textPrompt.confirm(""));
         return true;
+    }
+
+    private boolean isTrustedRovinSaveOrigin(@Nullable String uri) {
+        if (StringUtils.isEmpty(uri)) {
+            return false;
+        }
+
+        final String host = UrlUtils.getHost(uri);
+        if (StringUtils.isEmpty(host)) {
+            return false;
+        }
+
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host)) {
+            return true;
+        }
+
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_FIXED_TARGET_URL)) {
+            final String fixedHost = UrlUtils.getHost(BuildConfig.ROVIN_FIXED_TARGET_URL);
+            if (!StringUtils.isEmpty(fixedHost) && fixedHost.equalsIgnoreCase(host)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @NonNull
+    private File getRovinSaveFile() {
+        final String subdir = StringUtils.isEmpty(BuildConfig.ROVIN_SAVE_SUBDIR) ? "rovin-save" : BuildConfig.ROVIN_SAVE_SUBDIR;
+        final String filename = StringUtils.isEmpty(BuildConfig.ROVIN_SAVE_FILENAME) ? "rovin-save.json" : BuildConfig.ROVIN_SAVE_FILENAME;
+        final File baseDir = new File(mContext.getFilesDir(), subdir);
+        return new File(baseDir, filename);
+    }
+
+    @NonNull
+    private String readRovinSaveJson() throws IOException {
+        final File saveFile = getRovinSaveFile();
+        if (!saveFile.exists()) {
+            return "";
+        }
+
+        final long length = saveFile.length();
+        if (length > ROVIN_SAVE_MAX_BYTES) {
+            return "error|too_large";
+        }
+
+        try (FileInputStream input = new FileInputStream(saveFile)) {
+            final byte[] bytes = new byte[(int) length];
+            int offset = 0;
+            while (offset < bytes.length) {
+                final int read = input.read(bytes, offset, bytes.length - offset);
+                if (read < 0) {
+                    break;
+                }
+                offset += read;
+            }
+            return new String(bytes, 0, offset, StandardCharsets.UTF_8);
+        }
+    }
+
+    private void validateJsonObject(@NonNull String json) throws JSONException {
+        new JSONObject(json);
+    }
+
+    private void writeRovinSaveAtomic(@NonNull byte[] jsonBytes) throws IOException {
+        final File saveFile = getRovinSaveFile();
+        final File dir = saveFile.getParentFile();
+        if (dir == null) {
+            throw new IOException("Missing save directory.");
+        }
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Failed to create save directory.");
+        }
+
+        final File tempFile = new File(dir, saveFile.getName() + ".tmp");
+        try (FileOutputStream output = new FileOutputStream(tempFile, false)) {
+            output.write(jsonBytes);
+            output.flush();
+            output.getFD().sync();
+        }
+
+        if (saveFile.exists() && !saveFile.delete()) {
+            throw new IOException("Failed to replace existing save file.");
+        }
+
+        if (!tempFile.renameTo(saveFile)) {
+            throw new IOException("Atomic rename failed.");
+        }
+    }
+
+    private void clearRovinSave() {
+        try {
+            final File saveFile = getRovinSaveFile();
+            if (saveFile.exists() && !saveFile.delete()) {
+                Log.w(LOGTAG, "Failed to delete save file: " + saveFile.getAbsolutePath());
+            }
+        } catch (Exception error) {
+            Log.w(LOGTAG, "Failed to clear save file.", error);
+        }
     }
 
     @Nullable
