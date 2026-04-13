@@ -142,6 +142,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final String ROVIN_PAUSE_BRIDGE_QUERY_PARAM = "rovinPauseBridge";
     private static final String ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM = "rovinNativeHaptics";
     private static final String ROVIN_SAVE_BRIDGE_QUERY_PARAM = "rovinSaveBridge";
+    private static final String ROVIN_RENDER_SCALE_QUERY_PARAM = "renderScale";
+    private static final String ROVIN_RENDER_SCALE_DEFAULT = "1.3";
     private static final long BATTERY_UPDATE_INTERVAL = 60 * 1_000_000_000L; // 60 seconds
 
     private boolean mLaunchImmersive = false;
@@ -1211,12 +1213,17 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @NonNull
     private String addRovinBridgeCapabilities(@NonNull String url) {
-        return Uri.parse(url).buildUpon()
+        final Uri parsed = Uri.parse(url);
+        final Uri.Builder builder = parsed.buildUpon()
                 .appendQueryParameter(ROVIN_PAUSE_BRIDGE_QUERY_PARAM, "1")
                 .appendQueryParameter(ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM, "1")
-                .appendQueryParameter(ROVIN_SAVE_BRIDGE_QUERY_PARAM, "1")
-                .build()
-                .toString();
+                .appendQueryParameter(ROVIN_SAVE_BRIDGE_QUERY_PARAM, "1");
+
+        if (!parsed.getQueryParameterNames().contains(ROVIN_RENDER_SCALE_QUERY_PARAM)) {
+            builder.appendQueryParameter(ROVIN_RENDER_SCALE_QUERY_PARAM, ROVIN_RENDER_SCALE_DEFAULT);
+        }
+
+        return builder.build().toString();
     }
 
     @NonNull
