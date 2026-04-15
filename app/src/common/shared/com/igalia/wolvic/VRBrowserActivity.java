@@ -153,6 +153,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
+    private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
     private static class RovinLaunchTarget {
         final String url;
         final String statusMessage;
@@ -1918,6 +1919,14 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private void onAppFocusChanged(final boolean aIsFocused) {
         runOnUiThread(() -> {
             Session session = SessionStore.get().getActiveSession();
+            if (session == null || session.getCurrentUri() == null || session.getCurrentUri().isBlank()) {
+                return;
+            }
+
+            if (!aIsFocused) {
+                session.loadUri(ROVIN_APP_FOCUS_LOST_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+            }
+
             if (session.getActiveVideo() == null || !session.getActiveVideo().isActive())
                 return;
             if (aIsFocused) {
