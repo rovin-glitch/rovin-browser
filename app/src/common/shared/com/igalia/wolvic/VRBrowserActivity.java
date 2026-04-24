@@ -774,21 +774,24 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         final String px = mImmersiveParentElementXPath;
         final String tx = mImmersiveTargetElementXPath;
 
-        if (tx == null) {
-            return;
-        }
-
         // Give it a small delay to ensure the engine is ready to accept a new WebXR session request
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue()) {
                 return;
             }
 
-            // Small JS snippet to find and click the VR button
+            // Try the direct auto-resume function first, then fall back to XPath click
+            // This is safer and more reliable than raw XPath evaluation.
             String js = String.format(
                 "javascript:(function(){" +
+                "  if(window.rovin_auto_resume){" +
+                "    console.log('[rovin:relaunch] Calling window.rovin_auto_resume');" +
+                "    window.rovin_auto_resume('native-warm-start');" +
+                "    return;" +
+                "  }" +
                 "  function g(d,x){ try { let r=d.evaluate(x,d,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null); return r.singleNodeValue; } catch(e){return null;} }" +
                 "  let px='%s'; let tx='%s';" +
+                "  if(!tx || tx === '' || tx === 'null') return;" +
                 "  let p=document;" +
                 "  if(px && px !== '' && px !== 'null'){ let e=g(document,px); if(e) p=e.contentDocument||e.contentWindow.document; }" +
                 "  let t=g(p,tx);" +
@@ -800,7 +803,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
             Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
             mWindows.getFocusedWindow().getSession().loadUri(js);
-        }, 500);
+        }, 300);
     }
 
     @Override
@@ -1051,7 +1054,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mImmersiveTargetElementXPath = extras.getString(EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH);
 
                 // Open in immersive requires specific information to be present
-                mLaunchImmersive = targetUri != null && mImmersiveTargetElementXPath != null;
+                mLaunchImmersive |= targetUri != null && mImmersiveTargetElementXPath != null;
             }
         }
 
@@ -1697,6 +1700,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
         mIsPresentingImmersive.postValue(true);
+        mLaunchImmersive = true; // ROVIN: Persist immersive state for warm-starts
         runOnUiThread(() -> {
             mWindows.enterImmersiveMode();
             for (WebXRListener listener: mWebXRListeners) {
