@@ -151,7 +151,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
-    private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
+    private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
     private static class RovinLaunchTarget {
@@ -280,6 +280,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     LinkedList<WebXRListener> mWebXRListeners;
     LinkedList<Runnable> mBackHandlers;
     private final MutableLiveData<Boolean> mIsPresentingImmersive = new MutableLiveData<>(false);
+    private boolean mIsBackgrounding = false;
     private Thread mUiThread;
     private LinkedList<Pair<Object, Float>> mBrightnessQueue;
     private Pair<Object, Float> mCurrentBrightness;
@@ -708,6 +709,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     protected void onPause() {
+        mIsBackgrounding = true;
         if (mIsPresentingImmersive.getValue()) {
             // This needs to be sync to ensure that WebVR is correctly paused.
             // Also prevents a deadlock in onDestroy when the BrowserWidget is released.
@@ -734,6 +736,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     protected void onResume() {
+        mIsBackgrounding = false;
         UISurfaceTextureRenderer.setRenderActive(true);
         MotionEventGenerator.clearDevices();
         mWidgetContainer.getViewTreeObserver().addOnGlobalFocusChangeListener(globalFocusListener);
@@ -757,6 +760,47 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         super.onResume();
         ((VRBrowserApplication)getApplication()).setCurrentActivity(this);
         getLifecycleRegistry().setCurrentState(Lifecycle.State.RESUMED);
+
+        if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
+            relaunchImmersiveMode();
+        }
+    }
+
+    private void relaunchImmersiveMode() {
+        if (mWindows == null || mWindows.getFocusedWindow() == null || mWindows.getFocusedWindow().getSession() == null) {
+            return;
+        }
+
+        final String px = mImmersiveParentElementXPath;
+        final String tx = mImmersiveTargetElementXPath;
+
+        if (tx == null) {
+            return;
+        }
+
+        // Give it a small delay to ensure the engine is ready to accept a new WebXR session request
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue()) {
+                return;
+            }
+
+            // Small JS snippet to find and click the VR button
+            String js = String.format(
+                "javascript:(function(){" +
+                "  function g(d,x){ try { let r=d.evaluate(x,d,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null); return r.singleNodeValue; } catch(e){return null;} }" +
+                "  let px='%s'; let tx='%s';" +
+                "  let p=document;" +
+                "  if(px && px !== '' && px !== 'null'){ let e=g(document,px); if(e) p=e.contentDocument||e.contentWindow.document; }" +
+                "  let t=g(p,tx);" +
+                "  if(t){ console.log('[rovin:relaunch] Clicking VR button'); t.click(); }" +
+                "})()",
+                px != null ? px.replace("'", "\\'") : "",
+                tx != null ? tx.replace("'", "\\'") : ""
+            );
+
+            Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
+            mWindows.getFocusedWindow().getSession().loadUri(js);
+        }, 500);
     }
 
     @Override
@@ -819,8 +863,16 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
+        } else if (isLaunchImmersive() && !isFinishing()) {
+            // ROVIN: Check if we are already on the same site to avoid destructive reload
+            Uri targetUri = intent.getData();
+            String currentUri = mWindows.getFocusedWindow() != null ? mWindows.getFocusedWindow().getSession().getCurrentUri() : "";
+            if (targetUri != null && !currentUri.isEmpty() && currentUri.startsWith(targetUri.toString())) {
+                Log.d(LOGTAG, "Same site detected in onNewIntent, skipping reload. Current URI: " + currentUri);
+            } else {
+                loadFromIntent(intent);
+            }
         } else if (isLaunchImmersive()) {
-            // We need to restart the Activity to ensure that the engine settings are initialized.
             finish();
             startActivity(intent);
         } else {
@@ -1676,7 +1728,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mIsPresentingImmersive.postValue(false);
         TelemetryService.stopImmersive();
 
-        if (mLaunchImmersive) {
+        if (mLaunchImmersive && !mIsBackgrounding) {
             Log.d(LOGTAG, "Launched in immersive mode: exiting WebXR will finish the app");
             finish();
         }

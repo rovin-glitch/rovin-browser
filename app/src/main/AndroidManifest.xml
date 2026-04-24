@@ -60,6 +60,17 @@
                 <data android:mimeType="text/plain"/>
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name="com.rovingames.neonchuck.NeonChuckRuntimeActivity"
+            android:exported="true"
+            android:targetActivity="com.igalia.wolvic.VRBrowserActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+        </activity-alias>
         <service
             android:name="com.igalia.wolvic.crashreporting.CrashReporterService"
             android:exported="false"
