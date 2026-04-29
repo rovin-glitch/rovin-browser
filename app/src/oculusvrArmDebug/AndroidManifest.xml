@@ -39,7 +39,7 @@
         </activity>
 
         <activity-alias
-            android:name="com.rovingames.runtime.RovinRuntimeActivity"
+            android:name=".RovinRuntimeActivity"
             android:exported="true"
             android:targetActivity=".VRBrowserActivity">
             <intent-filter>
