@@ -251,6 +251,7 @@ android {
         def backend = variant.productFlavors.find { it.dimension == "backend" }?.name
         def product = variant.productFlavors.find { it.dimension == "product" }?.name
         variant.outputs.each { output ->
+            /* 
             if (variant.buildType.name == "release") {
                 if (backend == "gecko") {
                     output.versionNameOverride = GECKO_RELEASE_VERSION_NAME
@@ -258,6 +259,7 @@ android {
                     output.versionNameOverride = product == "browser" ? CHROMIUM_BROWSER_RELEASE_VERSION_NAME : CHROMIUM_RUNTIME_RELEASE_VERSION_NAME
                 }
             }
+            */
             def platform = variant.productFlavors.find { it.dimension == "platform" }?.name
             /* 
             if (shouldUseStaticVersionCode()) {
