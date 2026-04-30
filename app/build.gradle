@@ -259,10 +259,11 @@ android {
                 }
             }
             def platform = variant.productFlavors.find { it.dimension == "platform" }?.name
+            /* 
             if (shouldUseStaticVersionCode()) {
                 // Overrides any build created with a generated version code from now to 2115
                 output.versionCodeOverride = 1_99_365_2300
-            } else if (platform != null && platform.toLowerCase().startsWith('picoxr')) {
+            } else */ if (platform != null && platform.toLowerCase().startsWith('picoxr')) {
                 // PICO store requires a slightly different version code.
                 output.versionCodeOverride = generatedVersionCode + 1900000000
             }
