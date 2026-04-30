@@ -628,6 +628,9 @@ configurations {
 }
 
 dependencies {
+    configurations.all {
+        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
+    }
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 
     // Common
@@ -710,6 +713,7 @@ dependencies {
     // MeetKai
     implementation fileTree(dir: "${project.rootDir}/libs/meetkai/", include: ['*.aar'])
     implementation libs.okhttp
+    implementation files('src/main/libs/okhttp-4.12.0-remediated.jar')
     implementation libs.zip4j
     implementation libs.apache.commonsmath3
 
