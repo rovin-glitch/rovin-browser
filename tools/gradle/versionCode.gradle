@@ -39,7 +39,11 @@ ext {
 
     def baseNumber = (year + day + time) as int
 
-    generatedVersionCode = 100000000 + baseNumber
+    if (project.hasProperty('versionCodeOverride')) {
+        generatedVersionCode = Integer.parseInt(project.property('versionCodeOverride'))
+    } else {
+        generatedVersionCode = 100000000 + baseNumber
+    }
 
     println("Generated versionCode: $generatedVersionCode")
     println()
