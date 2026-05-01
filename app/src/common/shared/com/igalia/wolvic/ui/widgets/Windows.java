@@ -274,7 +274,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
                         sessionState.mUri != null && sessionState.mUri.startsWith(uri)
                     ))
                     .collect(Collectors.toCollection(ArrayList::new));
-            for (WindowWidget window : mRegularWindows) {
+            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window.getSession() != null) {
                     WindowState windowState = new WindowState();
                     windowState.load(window, state, state.tabs.indexOf(window.getSession().getSessionState()));
@@ -552,10 +552,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = true;
-        for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.pauseCompositor();
         }
-        for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.pauseCompositor();
         }
     }
@@ -565,10 +565,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = false;
-        for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.resumeCompositor();
         }
-        for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.resumeCompositor();
         }
     }
@@ -599,10 +599,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             mTabsWidget = null;
         }
         mDelegate = null;
-        for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.close();
         }
-        for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.close();
         }
         mAccounts.removeAccountListener(mAccountObserver);
@@ -627,14 +627,14 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
 
     public void enterImmersiveMode() {
         if (!isInPrivateMode()) {
-            for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window != mFocusedWindow) {
                     window.onPause();
                 }
             }
 
         } else {
-            for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onPause();
                 }
@@ -648,14 +648,14 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
         }
 
         if (!isInPrivateMode()) {
-            for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window != mFocusedWindow) {
                     window.onResume();
                 }
             }
 
         } else {
-            for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onResume();
                 }

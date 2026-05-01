@@ -11,6 +11,15 @@
         android:paddingEnd="@dimen/prompt_dialog_padding_sides"
         android:paddingBottom="@dimen/prompt_dialog_padding_bottom"
         android:clipToPadding="false">
+        <ImageView
+            android:id="@+id/backgroundImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:adjustViewBounds="true"
+            android:alpha="0.96"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
 
         <com.igalia.wolvic.ui.views.UIButton
             android:id="@+id/backButton"

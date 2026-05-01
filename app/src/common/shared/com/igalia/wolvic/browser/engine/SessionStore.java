@@ -269,10 +269,7 @@ public class SessionStore implements
     }
 
     public void destroySession(Session aSession) {
-        mSessions.remove(aSession);
-        if (aSession != null) {
-            shutdownSession(aSession);
-        }
+        if (aSession != null && mSessions.remove(aSession)) { shutdownSession(aSession); }
     }
 
     public void destroySession(@NonNull String sessionId) {

@@ -101,6 +101,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     private transient boolean mFirstContentfulPaint;
     private transient long mKeepAlive;
     private transient Media mMedia;
+    private volatile boolean mIsShutdown = false;
 
     private static final List<String> FORCE_MOBILE_VIEWPORT = Collections.singletonList(".youtube.com");
 
@@ -119,6 +120,8 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     public interface DrmStateChangedListener {
         void onDrmStateChanged(Session aSession, @SessionState.DrmState int aDrmState);
     }
+
+    public boolean isShutdown() { return mIsShutdown; }
 
     public interface ExternalRequestDelegate {
         boolean onHandleExternalRequest(@NonNull String url);
@@ -208,8 +211,8 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
         }
     }
 
-    protected void shutdown() {
-        if (mState.mSession != null) {
+    protected void shutdown() { mIsShutdown = true; 
+        if (mState != null && mState.mSession != null) {
             setActive(false);
             suspend();
         } else {
@@ -271,7 +274,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     private void dumpState(WSession.NavigationDelegate aListener) {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             aListener.onCanGoBack(mState.mSession, canGoBack());
             aListener.onCanGoForward(mState.mSession, mState.mCanGoForward);
             aListener.onLocationChange(mState.mSession, mState.mUri);
@@ -468,7 +471,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
         if ((mState != null) && (mState.mSettings != null)) {
             TrackingProtectionPolicy policy = TrackingProtectionStore.getTrackingProtectionPolicy(mContext);
             mState.mSettings.setTrackingProtectionEnabled(mState.mSettings.isPrivateBrowsingEnabled() || policy.shouldBlockContent());
-            if (mState.mSession != null) {
+            if (mState != null && mState.mSession != null) {
                 mState.mSession.getSettings().setUseTrackingProtection(mState.mSettings.isTrackingProtectionEnabled());
             }
         }
@@ -582,7 +585,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
         boolean wasFullScreen = mState.mFullScreen;
 
         WSession previousWSession = null;
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             previousWSession = mState.mSession;
             closeSession(mState);
         }
@@ -678,7 +681,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
 
         Runnable cleanResources = () -> {
             display.surfaceDestroyed();
-            if (mState.mSession != null) {
+            if (mState != null && mState.mSession != null) {
                 mState.mSession.releaseDisplay(display);
             }
             BitmapCache.getInstance(mContext).releaseCaptureSurface();
@@ -721,7 +724,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public void purgeHistory() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.purgeHistory();
         }
     }
@@ -840,7 +843,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
             flushQueuedEvents();
         }
 
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.setActive(aActive);
             mState.setActive(aActive);
             if (!mState.mIsWebExtensionSession) {
@@ -864,13 +867,13 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public void reload(final int flags) {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.reload(flags);
         }
     }
 
     public void stop() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.stop();
         }
     }
@@ -883,8 +886,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
         if (aUri == null) {
             aUri = getHomeUri();
         }
-        if (mState.mSession != null) {
-            Log.d(LOGTAG, "Loading URI: " + aUri);
+        if (mState != null && mState.mSession != null && !mIsShutdown) { Log.d(LOGTAG, "Loading URI: " + aUri);
             if (mExternalRequestDelegate == null || !mExternalRequestDelegate.onHandleExternalRequest(aUri)) {
                 mState.mSession.loadUri(aUri, flags);
             }
@@ -896,8 +898,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public void loadPrivateBrowsingPage() {
-        if (mState.mSession != null) {
-            mState.mSession.loadData(mPrivatePage, "text/html");
+        if (mState != null && mState.mSession != null && !mIsShutdown) { mState.mSession.loadData(mPrivatePage, "text/html");
         }
     }
 
@@ -906,7 +907,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public void exitFullScreen() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.exitFullScreen();
         }
     }
@@ -920,7 +921,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public boolean isPrivateMode() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             return mState.mSession.getSettings().getUsePrivateMode();
         } else if (mState.mSettings != null) {
             return mState.mSettings.isPrivateBrowsingEnabled();
@@ -1059,19 +1060,19 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     }
 
     public void pageZoomIn() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.pageZoomIn();
         }
     }
 
     public void pageZoomOut() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             mState.mSession.pageZoomOut();
         }
     }
 
     public int getCurrentZoomLevel() {
-        if (mState.mSession != null) {
+        if (mState != null && mState.mSession != null) {
             return mState.mSession.getCurrentZoomLevel();
         }
         return 0;
@@ -1835,7 +1836,7 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
     public void releaseDisplay() {
         surfaceDestroyed();
         if (mState.mDisplay != null) {
-            if (mState.mSession != null) {
+            if (mState != null && mState.mSession != null) {
                 mState.mSession.releaseDisplay(mState.mDisplay);
             }
             mState.mDisplay = null;

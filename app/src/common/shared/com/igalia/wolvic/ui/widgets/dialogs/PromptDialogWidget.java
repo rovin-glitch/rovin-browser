@@ -125,6 +125,18 @@ public class PromptDialogWidget extends UIDialog {
         mBinding.imageContainer.setVisibility(visible ? VISIBLE: GONE);
     }
 
+    public void setDialogBackground(@DrawableRes int background) {
+        mBinding.getRoot().setBackgroundResource(background);
+    }
+
+    public void setBackgroundImageVisible(boolean visible) {
+        mBinding.backgroundImage.setVisibility(visible ? VISIBLE : GONE);
+    }
+
+    public void setBackgroundImage(@DrawableRes int imageRes) {
+        mBinding.backgroundImage.setImageResource(imageRes);
+    }
+
     public void setIcon(Drawable icon) {
         mBinding.icon.setImageDrawable(icon);
     }

@@ -154,6 +154,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
+    private static final String ROVIN_APP_FOCUS_GAINED_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-gained'));})();";
     private static class RovinLaunchTarget {
         final String url;
         final String statusMessage;
@@ -412,6 +413,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         mSettings = SettingsStore.getInstance(this);
         mSettings.initModel(this);
+        mSettings.setEnvironmentOverrideEnabled(false);
         mSettings.setEnvironment(SettingsStore.ENV_DEFAULT);
         mSettings.setTermsServiceAccepted(true);
         mSettings.setPrivacyPolicyAccepted(true);
@@ -710,16 +712,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @Override
     protected void onPause() {
         mIsBackgrounding = true;
-        if (mIsPresentingImmersive.getValue()) {
-            // This needs to be sync to ensure that WebVR is correctly paused.
-            // Also prevents a deadlock in onDestroy when the BrowserWidget is released.
-            exitImmersiveSync();
-        }
-
+        Log.i("VRB", "NeonChuck: onPause lifecycle reordered"); mWindows.onPause();
+        if (mIsPresentingImmersive.getValue()) { exitImmersiveSync(); mIsPresentingImmersive.setValue(false); }
         mAudioEngine.pauseEngine();
         mFragmentController.dispatchPause();
 
-        mWindows.onPause();
+        
 
         for (Widget widget: mWidgets.values()) {
             widget.onPause();
@@ -802,7 +800,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             );
 
             Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
-            mWindows.getFocusedWindow().getSession().loadUri(js);
+            if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { mWindows.getFocusedWindow().getSession().loadUri(js); }
         }, 300);
     }
 
@@ -867,11 +865,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
         } else if (isLaunchImmersive() && !isFinishing()) {
-            // ROVIN: Check if we are already on the same site to avoid destructive reload
+            Log.i("VRB", "NeonChuck: onNewIntent warm-start detected");
             Uri targetUri = intent.getData();
-            String currentUri = mWindows.getFocusedWindow() != null ? mWindows.getFocusedWindow().getSession().getCurrentUri() : "";
+            String currentUri = (mWindows != null && mWindows.getFocusedWindow() != null) ? mWindows.getFocusedWindow().getSession().getCurrentUri() : "";
             if (targetUri != null && !currentUri.isEmpty() && currentUri.startsWith(targetUri.toString())) {
-                Log.d(LOGTAG, "Same site detected in onNewIntent, skipping reload. Current URI: " + currentUri);
+                Log.i("VRB", "NeonChuck: Same site in warm-start, skipping relaunch loop");
             } else {
                 loadFromIntent(intent);
             }
@@ -1066,7 +1064,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
             if (openInKioskMode) {
                 // FIXME this might not work as expected if the app was already running
-                mWindows.openInKioskMode(targetUri.toString());
+                mWindows.openInKioskMode(addRovinBridgeCapabilities(targetUri.toString()));
             } if (mLaunchImmersive) {
                 mWindows.openInImmersiveMode(targetUri, mImmersiveParentElementXPath, mImmersiveTargetElementXPath);
             } else {
@@ -1076,9 +1074,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     location = Windows.OPEN_IN_BACKGROUND;
                 }
                 if (location == Windows.OPEN_IN_FOREGROUND) {
-                    mWindows.findTabAndSelect(targetUri.toString());
+                    mWindows.findTabAndSelect(addRovinBridgeCapabilities(targetUri.toString()));
                 } else {
-                    mWindows.openNewTabAfterRestore(targetUri.toString(), location);
+                    mWindows.openNewTabAfterRestore(addRovinBridgeCapabilities(targetUri.toString()), location);
                 }
             }
         } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
@@ -1384,8 +1382,14 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW:
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL:
                 // It looks like these come in all at the same time so just always suspend inactive Sessions.
-                Log.d(LOGTAG, "Memory pressure, suspending inactive sessions.");
-                SessionStore.get().suspendAllInactiveSessions();
+                Log.i("VRB", "NeonChuck: Memory pressure (TRIM_MEMORY_RUNNING_CRITICAL), suspending inactive sessions.");
+                try {
+                    if (SessionStore.get() != null) {
+                        SessionStore.get().suspendAllInactiveSessions();
+                    }
+                } catch (Exception e) {
+                    Log.e("VRB", "NeonChuck: Failed to suspend sessions during memory pressure: " + e.getMessage());
+                }
                 break;
             default:
                 Log.e(LOGTAG, "onTrimMemory unknown level: " + level);
@@ -1732,7 +1736,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mIsPresentingImmersive.postValue(false);
         TelemetryService.stopImmersive();
 
-        if (mLaunchImmersive && !mIsBackgrounding) {
+        if (mLaunchImmersive && !mIsBackgrounding && getLifecycle().getCurrentState() != androidx.lifecycle.Lifecycle.State.RESUMED) {
             Log.d(LOGTAG, "Launched in immersive mode: exiting WebXR will finish the app");
             finish();
         }
@@ -1979,8 +1983,16 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 return;
             }
 
-            if (!aIsFocused) {
-                session.loadUri(ROVIN_APP_FOCUS_LOST_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+            if (aIsFocused) {
+                Log.i("VRB", "NeonChuck: Focus GAINED");
+                if (session != null && !session.isShutdown()) {
+                    session.loadUri(ROVIN_APP_FOCUS_GAINED_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+                }
+            } else {
+                Log.i("VRB", "NeonChuck: Focus LOST");
+                if (session != null && !session.isShutdown()) {
+                    session.loadUri(ROVIN_APP_FOCUS_LOST_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+                }
             }
 
             if (session.getActiveVideo() == null || !session.getActiveVideo().isActive())

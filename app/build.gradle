@@ -124,11 +124,11 @@ android {
     namespace 'com.igalia.wolvic'
     compileSdkVersion 35
     defaultConfig {
-        applicationId "com.rovingames.runtime"
+        applicationId "com.rovingames.neon_chuck"
         ndk { abiFilters 'arm64-v8a' }
         minSdkVersion 24
         targetSdkVersion 34
-        versionCode 1
+        versionCode 2
         versionName "0.1.0"
         buildConfigField "String", "GIT_HASH", "\"${getGitHash()}\""
         buildConfigField "Boolean", "DISABLE_CRASH_RESTART", getCrashRestartDisabled()
@@ -146,17 +146,17 @@ android {
         buildConfigField 'String', 'EXPERIENCES_ENDPOINT', '"https://igalia.github.io/wolvic/experiences.json"'
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
         buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', '""'
-        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', '"Rovin Runtime"'
+        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', '"Neon Chuck"'
         buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
-        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', '"bundled-app/index.html"'
+        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', '"rovin-game/index.html"'
         buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
         // FEAT-0018: runtime-generic JSON save file config (eligible for Android/Quest Auto Backup via getFilesDir()).
         buildConfigField 'String', 'ROVIN_SAVE_SUBDIR', '"rovin-save"'
         buildConfigField 'String', 'ROVIN_SAVE_FILENAME', '"rovin-save.json"'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue 'string', 'app_name', 'Rovin Runtime'
-        resValue 'string', 'HOMEPAGE_URL', "https://example.invalid/"
+        resValue 'string', 'app_name', 'Neon Chuck'
+        resValue 'string', 'HOMEPAGE_URL', ""
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++14 -fexceptions -frtti -Werror" +
@@ -182,7 +182,7 @@ android {
     }
 
     base {
-        archivesName = "RovinRuntime"
+        archivesName = "NeonChuckRuntime"
     }
 
     signingConfigs {
@@ -362,7 +362,7 @@ android {
 
         visionglass {
             dimension "platform"
-            applicationId "com.rovingames.runtime"
+            applicationId "com.rovingames.neon_chuck"
             applicationIdSuffix ".visionglass"
             resValue "string", "app_name", "Wolvic Vision"
             targetSdkVersion 33
@@ -423,7 +423,7 @@ android {
         runtime {
             dimension "product"
             buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
-            resValue "string", "app_name", "Rovin Runtime"
+            resValue "string", "app_name", "Neon Chuck"
         }
 
         browser {
@@ -448,7 +448,7 @@ android {
         }
 
         mainlandChina {
-            applicationId "com.rovingames.runtime"
+            applicationId "com.rovingames.neon_chuck"
             dimension "store"
             buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "true"
             buildConfigField "Boolean", "WEBVIEW_IN_PHONE_UI", "true"

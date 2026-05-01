@@ -67,7 +67,7 @@
         </activity>
 
         <activity-alias
-            android:name=".RovinRuntimeActivity"
+            android:name=".NeonChuckRuntimeActivity"
             android:exported="true"
             android:targetActivity=".VRBrowserActivity">
             <intent-filter>

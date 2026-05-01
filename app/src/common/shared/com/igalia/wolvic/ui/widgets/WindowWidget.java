@@ -400,10 +400,10 @@ public class WindowWidget extends UIWidget implements SessionChangeListener,
         TelemetryService.closeWindowEvent(mWindowId);
         hideContextMenus();
         releaseWidget();
-        mLibrary.onDestroy();
+        if (mLibrary != null) mLibrary.onDestroy();
         mViewModel.setIsTopBarVisible(false);
         mViewModel.setIsTitleBarVisible(false);
-        SessionStore.get().destroySession(mSession);
+        if (mSession != null) SessionStore.get().destroySession(mSession);
         if (mTopBar != null) {
             mWidgetManager.removeWidget(mTopBar);
             mTopBar.setDelegate((TopBarWidget.Delegate) null);
