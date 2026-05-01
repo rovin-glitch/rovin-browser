@@ -274,7 +274,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
                         sessionState.mUri != null && sessionState.mUri.startsWith(uri)
                     ))
                     .collect(Collectors.toCollection(ArrayList::new));
-            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window.getSession() != null) {
                     WindowState windowState = new WindowState();
                     windowState.load(window, state, state.tabs.indexOf(window.getSession().getSessionState()));
@@ -552,10 +552,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = true;
-        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.pauseCompositor();
         }
-        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.pauseCompositor();
         }
     }
@@ -565,10 +565,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = false;
-        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.resumeCompositor();
         }
-        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.resumeCompositor();
         }
     }
@@ -599,10 +599,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             mTabsWidget = null;
         }
         mDelegate = null;
-        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.close();
         }
-        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.close();
         }
         mAccounts.removeAccountListener(mAccountObserver);
@@ -627,14 +627,14 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
 
     public void enterImmersiveMode() {
         if (!isInPrivateMode()) {
-            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window != mFocusedWindow) {
                     window.onPause();
                 }
             }
 
         } else {
-            if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onPause();
                 }
@@ -648,14 +648,14 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
         }
 
         if (!isInPrivateMode()) {
-            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window != mFocusedWindow) {
                     window.onResume();
                 }
             }
 
         } else {
-            if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onResume();
                 }

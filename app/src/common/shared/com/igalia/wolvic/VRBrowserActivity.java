@@ -800,7 +800,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             );
 
             Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
-            if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { mWindows.getFocusedWindow().getSession().loadUri(js); }
+            if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { mWindows.getFocusedWindow().getSession().loadUri(js); } }
         }, 300);
     }
 
