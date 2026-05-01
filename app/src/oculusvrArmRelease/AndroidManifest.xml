@@ -34,7 +34,8 @@
 
     <application
         android:name=".VRBrowserApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:exported="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
