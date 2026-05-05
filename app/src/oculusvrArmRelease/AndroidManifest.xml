@@ -29,7 +29,9 @@
 
     <application
         android:name=".VRBrowserApplication"
-        android:allowBackup="false"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:exported="true"
         android:icon="@mipmap/ic_launcher"
@@ -38,6 +40,7 @@
         android:supportsRtl="true"
         android:resizeableActivity="false"
         android:supportsPictureInPicture="false"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules"
         >
         <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
         <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro"/>

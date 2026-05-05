@@ -16,14 +16,16 @@
 
     <application
         android:name="com.igalia.wolvic.VRBrowserApplication"
-        android:allowBackup="false"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/FxR.Dark"
-        tools:replace="android:allowBackup,android:usesCleartextTraffic">
+        tools:replace="android:allowBackup,android:usesCleartextTraffic,android:fullBackupContent,android:dataExtractionRules">
         <activity
             android:name="com.igalia.wolvic.VRBrowserActivity"
             android:launchMode="singleInstance"
