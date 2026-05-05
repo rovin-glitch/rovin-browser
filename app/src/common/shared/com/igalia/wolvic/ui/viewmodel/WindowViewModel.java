@@ -447,8 +447,13 @@ public class WindowViewModel extends AndroidViewModel {
                 SpannableString spannable = new SpannableString(aURL);
                 ForegroundColorSpan color1 = new ForegroundColorSpan(mURLProtocolColor);
                 ForegroundColorSpan color2 = new ForegroundColorSpan(mURLWebsiteColor);
-                spannable.setSpan(color1, 0, index + 3, 0);
-                spannable.setSpan(color2, index + 3, aURL.length(), 0);
+                int end1 = Math.min(index + 3, aURL.length());
+                if (end1 >= 0) {
+                    spannable.setSpan(color1, 0, end1, 0);
+                }
+                if (end1 <= aURL.length()) {
+                    spannable.setSpan(color2, end1, aURL.length(), 0);
+                }
                 this.url.postValue(spannable);
 
             } else {

@@ -184,7 +184,9 @@ public class PermissionWidget extends PromptDialogWidget {
         int start = message.indexOf(requesterName);
         int end = start + requesterName.length();
         SpannableStringBuilder str = new SpannableStringBuilder(message);
-        str.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (start != -1) {
+            str.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
 
         setIcon(iconId);
         setTitle(titleId);
