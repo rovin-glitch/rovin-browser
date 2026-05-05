@@ -385,8 +385,17 @@ public class PromptDelegate implements
             return false;
         }
 
+        // Allow bundled local content
+        if (uri.startsWith("file:///android_asset/")) {
+            return true;
+        }
+
         final String host = UrlUtils.getHost(uri);
         if (StringUtils.isEmpty(host)) {
+            // Only block if it's not a known local scheme we already handled above
+            if (!UrlUtils.isFileUri(uri)) {
+                Log.w(LOGTAG, "Rovin save: Blocked empty host for uri=" + uri);
+            }
             return false;
         }
 
