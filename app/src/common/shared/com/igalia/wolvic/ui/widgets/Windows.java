@@ -555,7 +555,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
         if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.pauseCompositor();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.pauseCompositor();
         }
     }
@@ -568,7 +568,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
         if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.resumeCompositor();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.resumeCompositor();
         }
     }
@@ -602,7 +602,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
         if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.close();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.close();
         }
         mAccounts.removeAccountListener(mAccountObserver);
@@ -634,7 +634,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             }
 
         } else {
-            if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onPause();
                 }
@@ -655,7 +655,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             }
 
         } else {
-            if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+            if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
                 if (window != mFocusedWindow) {
                     window.onResume();
                 }

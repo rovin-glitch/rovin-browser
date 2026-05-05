@@ -142,6 +142,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final String ROVIN_PAUSE_BRIDGE_QUERY_PARAM = "rovinPauseBridge";
     private static final String ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM = "rovinNativeHaptics";
     private static final String ROVIN_SAVE_BRIDGE_QUERY_PARAM = "rovinSaveBridge";
+    private static final String ROVIN_RUNTIME_QUERY_PARAM = "rovinRuntime";
     private static final String ROVIN_RENDER_SCALE_QUERY_PARAM = "renderScale";
     private static final String ROVIN_RENDER_SCALE_DEFAULT = "1.3";
     private static final long BATTERY_UPDATE_INTERVAL = 60 * 1_000_000_000L; // 60 seconds
@@ -800,8 +801,17 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             );
 
             Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
-            if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) { mWindows.getFocusedWindow().getSession().loadUri(js); } }
-        }, 300);
+            if (mWindows != null && mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().getSession() != null) {
+                mWindows.getFocusedWindow().getSession().loadUri(js);
+            }
+        }, 800);
+    }
+
+    public void signalReadyForVr() {
+        Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
+        // Do NOT auto-trigger relaunchImmersiveMode() here.
+        // Cold start requires a user gesture (Continue button click) to enter WebXR.
+        // Warm-start re-entry is already handled by onResume().
     }
 
     @Override
@@ -1080,12 +1090,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 }
             }
         } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
-            final RovinLaunchTarget target = resolveRovinLaunchTarget();
-            if (target.valid && !StringUtils.isEmpty(target.url)) {
-                launchRovinExperience(target);
-            } else {
-                showRovinLanding();
-            }
+            showRovinLanding();
         } else {
             Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + mWindows.getFocusedWindow().getSession().getCurrentUri());
         }
@@ -1271,7 +1276,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         final Uri.Builder builder = parsed.buildUpon()
                 .appendQueryParameter(ROVIN_PAUSE_BRIDGE_QUERY_PARAM, "1")
                 .appendQueryParameter(ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM, "1")
-                .appendQueryParameter(ROVIN_SAVE_BRIDGE_QUERY_PARAM, "1");
+                .appendQueryParameter(ROVIN_SAVE_BRIDGE_QUERY_PARAM, "1")
+                .appendQueryParameter(ROVIN_RUNTIME_QUERY_PARAM, "1");
 
         if (!parsed.getQueryParameterNames().contains(ROVIN_RENDER_SCALE_QUERY_PARAM)) {
             builder.appendQueryParameter(ROVIN_RENDER_SCALE_QUERY_PARAM, ROVIN_RENDER_SCALE_DEFAULT);

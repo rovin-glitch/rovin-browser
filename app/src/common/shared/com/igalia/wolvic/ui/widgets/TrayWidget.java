@@ -946,7 +946,7 @@ public class TrayWidget extends UIWidget implements WidgetManagerDelegate.Update
     }
 
     public void setBatteryLevels(final int headset, final boolean isCharging, final int leftController, final int rightController) {
-        updateWifi();
+        // updateWifi(); // Performance: Poll via broadcast listener only
         if (DeviceType.getType() == DeviceType.OculusQuest) {
             mTrayViewModel.setLeftControllerIcon(R.drawable.ic_icon_statusbar_leftcontroller);
             mTrayViewModel.setRightControllerIcon(R.drawable.ic_icon_statusbar_rightcontroller);

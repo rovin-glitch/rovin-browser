@@ -67,6 +67,7 @@ public class PromptDelegate implements
     private static final String LOGTAG = "PromptDelegate";
     private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
     private static final String ROVIN_SAVE_PROMPT_MESSAGE = "__rovin_save__";
+    private static final String ROVIN_READY_PROMPT_MESSAGE = "__rovin_ready__";
     private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
@@ -229,6 +230,10 @@ public class PromptDelegate implements
             return result;
         }
 
+        if (handleRovinReadyPrompt(textPrompt, result)) {
+            return result;
+        }
+
         mPrompt = new TextPromptWidget(mContext);
         mPrompt.getPlacement().parentHandle = mAttachedWindow.getHandle();
         mPrompt.getPlacement().parentAnchorY = 0.0f;
@@ -355,6 +360,23 @@ public class PromptDelegate implements
 
         activity.triggerHapticPulse(pulseDuration, pulseIntensity, controllerId);
         result.complete(textPrompt.confirm(""));
+        return true;
+    }
+
+    private boolean handleRovinReadyPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_READY_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        Log.i(LOGTAG, "PromptDelegate: __rovin_ready__ received. Signaling Activity.");
+        activity.signalReadyForVr();
+        result.complete(textPrompt.confirm("ok"));
         return true;
     }
 
