@@ -234,6 +234,17 @@ public class PromptDelegate implements
             return result;
         }
 
+        // ROVIN: Deadlock Safety Valve
+        // If the message starts with __rovin_ but wasn't handled by the specific handlers above,
+        // we must CONSUME it and return immediately. This prevents unhandled bridge messages
+        // from showing a hidden blocking native dialog that deadlocks the startup.
+        String message = textPrompt.message();
+        if (message != null && message.startsWith("__rovin_")) {
+            Log.w(LOGTAG, "Rovin Safety Valve: Consuming unhandled bridge message: " + message);
+            result.complete(textPrompt.confirm("ok"));
+            return result;
+        }
+
         mPrompt = new TextPromptWidget(mContext);
         mPrompt.getPlacement().parentHandle = mAttachedWindow.getHandle();
         mPrompt.getPlacement().parentAnchorY = 0.0f;

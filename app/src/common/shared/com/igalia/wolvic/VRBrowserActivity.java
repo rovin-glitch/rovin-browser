@@ -762,9 +762,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         ((VRBrowserApplication)getApplication()).setCurrentActivity(this);
         getLifecycleRegistry().setCurrentState(Lifecycle.State.RESUMED);
 
-        if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
-            relaunchImmersiveMode();
-        }
+        // The native auto-resume is now disabled to prevent collisions with the Rovin Product's
+        // internal initialization. We rely on the unified JS handshake instead.
+        // if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
+        //     relaunchImmersiveMode();
+        // }
     }
 
     private void relaunchImmersiveMode() {
@@ -1107,7 +1109,25 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
             showRovinLanding();
         } else {
-            Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + mWindows.getFocusedWindow().getSession().getCurrentUri());
+            // ROVIN: Port Repair Logic
+            // If the tab is already open with a Rovin Product URL but on a different port (from a previous session),
+            // we must force-redirect it to the new port to prevent "Connection Refused" blackouts.
+            Session session = mWindows.getFocusedWindow().getSession();
+            String currentUri = session != null ? session.getCurrentUri() : null;
+            RovinLaunchTarget target = resolveRovinLaunchTarget();
+
+            if (currentUri != null && target != null && target.valid && !StringUtils.isEmpty(target.url)) {
+                Uri current = Uri.parse(currentUri);
+                Uri latest = Uri.parse(target.url);
+
+                // If it's the same host but different port, force reload with the new port.
+                if ("127.0.0.1".equals(current.getHost()) && current.getPort() != latest.getPort()) {
+                    Log.i(LOGTAG, "Rovin Port Repair: Redirecting stale tab from port " + current.getPort() + " to " + latest.getPort());
+                    launchRovinExperience(target);
+                    return;
+                }
+            }
+            Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + currentUri);
         }
     }
 
