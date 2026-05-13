@@ -190,6 +190,7 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
         if (!mWebXRRendering) {
             stopAnimation();
         }
+        hide(REMOVE_WIDGET);
         mWidgetManager.updateWidget(this);
     }
 
