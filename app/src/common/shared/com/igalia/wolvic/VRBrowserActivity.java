@@ -250,6 +250,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     static final int NoGesture = -1;
     static final int GestureSwipeLeft = 0;
     static final int GestureSwipeRight = 1;
+    private int mLastGesture = NoGesture;
+
+    private boolean mRovinReady = false;
     static final int SwipeDelay = 1000; // milliseconds
     static final long RESET_CRASH_COUNT_DELAY = 5000;
     static final int UPDATE_NATIVE_WIDGETS_DELAY = 50; // milliseconds
@@ -260,7 +263,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     AudioEngine mAudioEngine;
     OffscreenDisplay mOffscreenDisplay;
     FrameLayout mWidgetContainer;
-    int mLastGesture;
     SwipeRunnable mLastRunnable;
     Handler mHandler = new Handler(Looper.getMainLooper());
     Runnable mAudioUpdateRunnable;
@@ -808,10 +810,23 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     public void signalReadyForVr() {
-        Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
-        // Do NOT auto-trigger relaunchImmersiveMode() here.
-        // Cold start requires a user gesture (Continue button click) to enter WebXR.
-        // Warm-start re-entry is already handled by onResume().
+        runOnUiThread(() -> {
+            Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
+            mRovinReady = true;
+
+            // Clear the native blackout/loading card immediately
+            onDismissWebXRInterstitial();
+
+            // Force hide all browser chrome remnants
+            setPrimaryBrowserChromeVisible(false);
+
+            // If the landing widget is still visible (e.g. race during auto-launch), hide it
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.hide(REMOVE_WIDGET);
+            }
+
+            Log.d(LOGTAG, "Rovin Runtime: Handshake complete, native shell is now transparent.");
+        });
     }
 
     @Override
