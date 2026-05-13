@@ -715,7 +715,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @Override
     protected void onPause() {
         mIsBackgrounding = true;
-        Log.i("VRB", "NeonChuck: onPause lifecycle reordered"); mWindows.onPause();
+        Log.i("VRB", "RovinProduct: onPause lifecycle reordered"); mWindows.onPause();
         if (mIsPresentingImmersive.getValue()) { exitImmersiveSync(); mIsPresentingImmersive.setValue(false); }
         mAudioEngine.pauseEngine();
         mFragmentController.dispatchPause();
@@ -892,11 +892,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
         } else if (isLaunchImmersive() && !isFinishing()) {
-            Log.i("VRB", "NeonChuck: onNewIntent warm-start detected");
+            Log.i("VRB", "RovinProduct: onNewIntent warm-start detected");
             Uri targetUri = intent.getData();
             String currentUri = (mWindows != null && mWindows.getFocusedWindow() != null) ? mWindows.getFocusedWindow().getSession().getCurrentUri() : "";
             if (targetUri != null && !currentUri.isEmpty() && currentUri.startsWith(targetUri.toString())) {
-                Log.i("VRB", "NeonChuck: Same site in warm-start, skipping relaunch loop");
+                Log.i("VRB", "RovinProduct: Same site in warm-start, skipping relaunch loop");
             } else {
                 loadFromIntent(intent);
             }
@@ -1423,13 +1423,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW:
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL:
                 // It looks like these come in all at the same time so just always suspend inactive Sessions.
-                Log.i("VRB", "NeonChuck: Memory pressure (TRIM_MEMORY_RUNNING_CRITICAL), suspending inactive sessions.");
+                Log.i("VRB", "RovinProduct: Memory pressure (TRIM_MEMORY_RUNNING_CRITICAL), suspending inactive sessions.");
                 try {
                     if (SessionStore.get() != null) {
                         SessionStore.get().suspendAllInactiveSessions();
                     }
                 } catch (Exception e) {
-                    Log.e("VRB", "NeonChuck: Failed to suspend sessions during memory pressure: " + e.getMessage());
+                    Log.e("VRB", "RovinProduct: Failed to suspend sessions during memory pressure: " + e.getMessage());
                 }
                 break;
             default:
@@ -2025,12 +2025,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             }
 
             if (aIsFocused) {
-                Log.i("VRB", "NeonChuck: Focus GAINED");
+                Log.i("VRB", "RovinProduct: Focus GAINED");
                 if (session != null && !session.isShutdown()) {
                     session.loadUri(ROVIN_APP_FOCUS_GAINED_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
                 }
             } else {
-                Log.i("VRB", "NeonChuck: Focus LOST");
+                Log.i("VRB", "RovinProduct: Focus LOST");
                 if (session != null && !session.isShutdown()) {
                     session.loadUri(ROVIN_APP_FOCUS_LOST_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
                 }
