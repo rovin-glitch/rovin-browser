@@ -1106,13 +1106,14 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     mWindows.openNewTabAfterRestore(addRovinBridgeCapabilities(targetUri.toString()), location);
                 }
             }
-        } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
+        } else if (mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().isCurrentUriBlank()) {
             showRovinLanding();
         } else {
             // ROVIN: Port Repair Logic
             // If the tab is already open with a Rovin Product URL but on a different port (from a previous session),
             // we must force-redirect it to the new port to prevent "Connection Refused" blackouts.
-            Session session = mWindows.getFocusedWindow().getSession();
+            WindowWidget focusedWindow = mWindows.getFocusedWindow();
+            Session session = focusedWindow != null ? focusedWindow.getSession() : null;
             String currentUri = session != null ? session.getCurrentUri() : null;
             RovinLaunchTarget target = resolveRovinLaunchTarget();
 
