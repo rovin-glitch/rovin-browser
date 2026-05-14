@@ -368,7 +368,7 @@ public class TrayWidget extends UIWidget implements WidgetManagerDelegate.Update
         mBinding.rightController.setVisibility(mRightControllerBatteryLevel < 0 ? View.GONE : View.VISIBLE);
 
         updateTime();
-        updateWifi();
+        // updateWifi(); // Performance: Poll via broadcast listener only
     }
 
     public void start(Context context) {
