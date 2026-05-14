@@ -149,6 +149,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private boolean mLaunchImmersive = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
+    private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
+    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
+    private static final String ROVIN_POLL_LOADED_JS = "javascript:window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__)";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
@@ -317,6 +320,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private LinkedList<CheckCompositionLayersCallback> mCompositionLayersPendingCallbacks;
     private Runnable mPendingRovinAutoLaunch;
     private RovinAssetHttpServer mRovinAssetHttpServer;
+    private Handler mStartupPollingHandler;
+    private Runnable mStartupPollingRunnable;
+    private int mStartupPollingCount = 0;
 
     private ViewTreeObserver.OnGlobalFocusChangeListener globalFocusListener = new ViewTreeObserver.OnGlobalFocusChangeListener() {
         @Override
@@ -828,6 +834,74 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             }
 
             Log.d(LOGTAG, "Rovin Runtime: Handshake complete, native shell is now transparent.");
+            stopRovinStartupPolling();
+        });
+    }
+
+    public void startRovinStartupPolling() {
+        runOnUiThread(() -> {
+            Log.i(LOGTAG, "Rovin Runtime: Starting native-led readiness polling...");
+            mStartupPollingCount = 0;
+            if (mStartupPollingHandler == null) {
+                mStartupPollingHandler = new Handler(Looper.getMainLooper());
+            }
+            if (mStartupPollingRunnable == null) {
+                mStartupPollingRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        pollRovinLoadedStatus();
+                    }
+                };
+            }
+            mStartupPollingHandler.removeCallbacks(mStartupPollingRunnable);
+            mStartupPollingHandler.postDelayed(mStartupPollingRunnable, ROVIN_STARTUP_POLLING_INTERVAL_MS);
+        });
+    }
+
+    public void stopRovinStartupPolling() {
+        runOnUiThread(() -> {
+            if (mStartupPollingHandler != null && mStartupPollingRunnable != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Stopping readiness polling.");
+                mStartupPollingHandler.removeCallbacks(mStartupPollingRunnable);
+            }
+        });
+    }
+
+    private void pollRovinLoadedStatus() {
+        mStartupPollingCount++;
+        Log.d(LOGTAG, "Rovin Runtime: Polling readiness... Attempt " + mStartupPollingCount);
+
+        WindowWidget focusedWindow = mWindows.getFocusedWindow();
+        if (focusedWindow != null && focusedWindow.getSession() != null) {
+            focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
+        }
+
+        if (mStartupPollingCount >= ROVIN_STARTUP_MAX_ATTEMPTS) {
+            Log.w(LOGTAG, "Rovin Runtime: Polling timeout exceeded (" + ROVIN_STARTUP_MAX_ATTEMPTS + "s). Showing fallback UI.");
+            showStartupFallbackUI();
+            return;
+        }
+
+        if (mStartupPollingHandler != null && mStartupPollingRunnable != null) {
+            mStartupPollingHandler.postDelayed(mStartupPollingRunnable, ROVIN_STARTUP_POLLING_INTERVAL_MS);
+        }
+    }
+
+    public void handleRovinLoadedResult(boolean loaded) {
+        runOnUiThread(() -> {
+            if (loaded) {
+                Log.i(LOGTAG, "Rovin Runtime: Polling success! Engine is fully loaded.");
+                signalReadyForVr();
+            }
+        });
+    }
+
+    private void showStartupFallbackUI() {
+        runOnUiThread(() -> {
+            if (mWebXRInterstitial != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Showing fallback 'Enter Game' button.");
+                mWebXRInterstitial.showFallbackButton();
+            }
         });
     }
 
@@ -1182,6 +1256,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         setPrimaryBrowserChromeVisible(false);
         mWindows.openInKioskMode(target.url);
         setPrimaryBrowserChromeVisible(false);
+        startRovinStartupPolling();
+    }
     }
 
     private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {

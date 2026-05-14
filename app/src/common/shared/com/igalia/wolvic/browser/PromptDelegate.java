@@ -68,6 +68,7 @@ public class PromptDelegate implements
     private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
     private static final String ROVIN_SAVE_PROMPT_MESSAGE = "__rovin_save__";
     private static final String ROVIN_READY_PROMPT_MESSAGE = "__rovin_ready__";
+    private static final String ROVIN_LOADED_PROMPT_MESSAGE = "__rovin_is_fully_loaded__";
     private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
@@ -234,6 +235,10 @@ public class PromptDelegate implements
             return result;
         }
 
+        if (handleRovinLoadedPrompt(textPrompt, result)) {
+            return result;
+        }
+
         // ROVIN: Deadlock Safety Valve
         // If the message starts with __rovin_ but wasn't handled by the specific handlers above,
         // we must CONSUME it and return immediately. This prevents unhandled bridge messages
@@ -387,6 +392,27 @@ public class PromptDelegate implements
         VRBrowserActivity activity = (VRBrowserActivity) mContext;
         Log.i(LOGTAG, "PromptDelegate: __rovin_ready__ received. Signaling Activity.");
         activity.signalReadyForVr();
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinLoadedPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_LOADED_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        String loadedStr = textPrompt.defaultValue();
+        boolean loaded = "true".equalsIgnoreCase(loadedStr);
+        
+        Log.d(LOGTAG, "PromptDelegate: __rovin_is_fully_loaded__ response: " + loadedStr);
+        activity.handleRovinLoadedResult(loaded);
+        
         result.complete(textPrompt.confirm("ok"));
         return true;
     }

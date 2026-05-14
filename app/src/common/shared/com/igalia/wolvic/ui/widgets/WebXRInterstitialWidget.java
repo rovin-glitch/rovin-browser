@@ -58,10 +58,18 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
         mSpinnerAnimation = (AnimatedVectorDrawable) mBinding.webxrSpinner.getDrawable();
         mWidgetManager.addWebXRListener(this);
 
+        mBinding.rovinFallbackButton.setOnClickListener(v -> {
+            if (getContext() instanceof VRBrowserActivity) {
+                ((VRBrowserActivity)getContext()).signalReadyForVr();
+            }
+        });
     }
 
     private void setHowToVisible(boolean aShow) {
         mBinding.setShowHowTo(aShow);
+        if (aShow) {
+            mBinding.setShowFallback(false);
+        }
         mBinding.executePendingBindings();
         mWidgetPlacement.setSizeFromMeasure(getContext(), this);
         if (aShow) {
@@ -71,6 +79,12 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
             // MAke the spinner a bit smaller than the text
             mWidgetPlacement.worldWidth = mWidgetPlacement.width * WidgetPlacement.worldToDpRatio(getContext()) * 0.3f;
         }
+    }
+
+    public void showFallbackButton() {
+        mBinding.setShowHowTo(false);
+        mBinding.setShowFallback(true);
+        mBinding.executePendingBindings();
     }
 
     @Override
