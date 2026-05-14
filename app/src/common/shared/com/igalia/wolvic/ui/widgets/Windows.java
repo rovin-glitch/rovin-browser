@@ -1134,7 +1134,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
     }
 
     public void enterResizeMode() {
-        if (mLayout == null) return;
+        if (mWidgetManager == null) return;
         if (mFullscreenWindow == null) {
             for (WindowWidget window : getCurrentWindows()) {
                 window.setResizeMode(true);
