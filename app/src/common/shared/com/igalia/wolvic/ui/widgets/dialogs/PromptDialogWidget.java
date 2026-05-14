@@ -20,6 +20,7 @@ import androidx.annotation.StringRes;
 import androidx.databinding.DataBindingUtil;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.VRBrowserApplication;
 import com.igalia.wolvic.databinding.PromptDialogBinding;
 import com.igalia.wolvic.ui.widgets.WidgetPlacement;
@@ -123,6 +124,7 @@ public class PromptDialogWidget extends UIDialog {
 
     public void setIconVisible(boolean visible) {
         mBinding.imageContainer.setVisibility(visible ? VISIBLE: GONE);
+        if (RovinProduct.isRuntime()) { mBinding.imageContainer.setVisibility(VISIBLE); }
     }
 
     public void setDialogBackground(@DrawableRes int background) {

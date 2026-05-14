@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <data>
+        <import type="com.igalia.wolvic.RovinProduct" />
+    </data>
 
     <RelativeLayout
         android:layout_width="@dimen/prompt_dialog_width"
@@ -38,12 +43,18 @@
             android:layout_centerHorizontal="true"
             android:layout_marginBottom="10dp">
             <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/rovin_brand_logo"
+                app:visibleGone="@{RovinProduct.isRuntime()}" />
+            <ImageView
                 android:id="@+id/icon"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ff_logo" />
+                android:src="@drawable/ff_logo"
+                app:visibleGone="@{!RovinProduct.isRuntime()}" />
         </FrameLayout>
 
         <FrameLayout

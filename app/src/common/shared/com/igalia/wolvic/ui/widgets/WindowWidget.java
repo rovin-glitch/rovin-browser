@@ -900,6 +900,7 @@ public class WindowWidget extends UIWidget implements SessionChangeListener,
 
     @Override
     public void resizeSurface(final int aWidth, final int aHeight) {
+        if (mSession == null) return;
         if (mView != null) {
             super.resizeSurface(aWidth, aHeight);
         }
