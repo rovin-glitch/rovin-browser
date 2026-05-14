@@ -274,7 +274,7 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
                         sessionState.mUri != null && sessionState.mUri.startsWith(uri)
                     ))
                     .collect(Collectors.toCollection(ArrayList::new));
-            if (mRegularWindows != null) if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+            if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
                 if (window.getSession() != null) {
                     WindowState windowState = new WindowState();
                     windowState.load(window, state, state.tabs.indexOf(window.getSession().getSessionState()));
@@ -552,10 +552,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = true;
-        if (mRegularWindows != null) if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.pauseCompositor();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.pauseCompositor();
         }
     }
@@ -565,10 +565,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             return;
         }
         mCompositorPaused = false;
-        if (mRegularWindows != null) if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.resumeCompositor();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.resumeCompositor();
         }
     }
@@ -599,10 +599,10 @@ public class Windows implements TrayListener, TopBarWidget.Delegate, TitleBarWid
             mTabsWidget = null;
         }
         mDelegate = null;
-        if (mRegularWindows != null) if (mRegularWindows != null) if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
+        if (mRegularWindows != null) for (WindowWidget window: mRegularWindows) {
             window.close();
         }
-        if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
+        if (mPrivateWindows != null) for (WindowWidget window: mPrivateWindows) {
             window.close();
         }
         mAccounts.removeAccountListener(mAccountObserver);

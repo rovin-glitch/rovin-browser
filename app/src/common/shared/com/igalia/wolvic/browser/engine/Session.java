@@ -211,7 +211,8 @@ public class Session implements WContentBlocking.Delegate, WSession.NavigationDe
         }
     }
 
-    protected void shutdown() { mIsShutdown = true;  mIsShutdown = true;  mIsShutdown = true;  mIsShutdown = true;  mIsShutdown = true; 
+    protected void shutdown() {
+        mIsShutdown = true;
         if (mState != null && mState.mSession != null) {
             setActive(false);
             suspend();
