@@ -256,6 +256,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private int mLastGesture = NoGesture;
 
     private boolean mRovinReady = false;
+    private int mProbeAttempts = 0;
     static final int SwipeDelay = 1000; // milliseconds
     static final long RESET_CRASH_COUNT_DELAY = 5000;
     static final int UPDATE_NATIVE_WIDGETS_DELAY = 50; // milliseconds
@@ -819,8 +820,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     public void signalReadyForVr() {
         runOnUiThread(() -> {
-            Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
+            if (mRovinReady) return;
             mRovinReady = true;
+            Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
 
             // Clear the native blackout/loading card immediately
             onDismissWebXRInterstitial();
@@ -833,8 +835,22 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinLandingWidget.hide(REMOVE_WIDGET);
             }
 
-            Log.d(LOGTAG, "Rovin Runtime: Handshake complete, native shell is now transparent.");
+            Log.i(LOGTAG, "Rovin Runtime: Handshake complete, triggering relaunchImmersiveMode.");
             stopRovinStartupPolling();
+            relaunchImmersiveMode();
+        });
+    }
+
+    public void rovinLog(String message) {
+        String logLine = "[" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + "] " + message;
+        Log.i(LOGTAG, "Rovin Console: " + logLine);
+        runOnUiThread(() -> {
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.appendLog(logLine);
+            }
+            if (mWebXRInterstitial != null) {
+                mWebXRInterstitial.appendLog(logLine);
+            }
         });
     }
 
@@ -966,11 +982,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
         } else if (isLaunchImmersive() && !isFinishing()) {
-            Log.i("VRB", "RovinProduct: onNewIntent warm-start detected");
+            Log.i("VRB", "NeonChuck: onNewIntent warm-start detected");
             Uri targetUri = intent.getData();
             String currentUri = (mWindows != null && mWindows.getFocusedWindow() != null) ? mWindows.getFocusedWindow().getSession().getCurrentUri() : "";
             if (targetUri != null && !currentUri.isEmpty() && currentUri.startsWith(targetUri.toString())) {
-                Log.i("VRB", "RovinProduct: Same site in warm-start, skipping relaunch loop");
+                Log.i("VRB", "NeonChuck: Same site in warm-start, skipping relaunch loop");
             } else {
                 loadFromIntent(intent);
             }
@@ -1239,6 +1255,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+        startRovinReadinessProbe();
     }
 
     private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
@@ -1255,6 +1272,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         setPrimaryBrowserChromeVisible(false);
         mWindows.openInKioskMode(target.url);
+        startRovinReadinessProbe();
         setPrimaryBrowserChromeVisible(false);
         startRovinStartupPolling();
     }
@@ -2862,5 +2880,4 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private native void setIsServo(boolean aIsServo);
     private native void setPointerModeNative(@PointerMode int aMode);
     private native void setHandTrackingEnabledNative(boolean value);
-
-}
+}

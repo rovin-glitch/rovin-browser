@@ -68,6 +68,8 @@ public class PromptDelegate implements
     private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
     private static final String ROVIN_SAVE_PROMPT_MESSAGE = "__rovin_save__";
     private static final String ROVIN_READY_PROMPT_MESSAGE = "__rovin_ready__";
+    private static final String ROVIN_LOG_PROMPT_PREFIX = "__rovin_log__:";
+    private static final String ROVIN_SAVE_LOGS_PROMPT = "__rovin_save_logs__";
     private static final String ROVIN_LOADED_PROMPT_MESSAGE = "__rovin_is_fully_loaded__";
     private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
@@ -232,6 +234,14 @@ public class PromptDelegate implements
         }
 
         if (handleRovinReadyPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinLogPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinSaveLogsPrompt(textPrompt, result)) {
             return result;
         }
 
@@ -886,5 +896,33 @@ public class PromptDelegate implements
     public void onSessionChanged(@NonNull Session aOldSession, @NonNull Session aSession) {
         cleanSession(aOldSession);
         setUpSession(aSession);
+    }
+
+
+    private boolean handleRovinLogPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        String msg = textPrompt.message();
+        if (msg == null || !msg.startsWith(ROVIN_LOG_PROMPT_PREFIX)) {
+            return false;
+        }
+
+        Log.i("PromptDelegate", "RovinLog: " + msg);
+        if (mContext instanceof VRBrowserActivity) {
+            ((VRBrowserActivity) mContext).rovinLog("Web: " + msg.substring(ROVIN_LOG_PROMPT_PREFIX.length()));
+        }
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinSaveLogsPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_SAVE_LOGS_PROMPT.equals(textPrompt.message())) {
+            return false;
+        }
+
+        Log.i("PromptDelegate", "RovinSaveLogs: detected");
+        if (mContext instanceof VRBrowserActivity) {
+            ((VRBrowserActivity) mContext).rovinLog("System: Save logs requested from Web.");
+        }
+        result.complete(textPrompt.confirm("ok"));
+        return true;
     }
 }
