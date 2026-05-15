@@ -847,10 +847,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     public void signalReadyForVr() {
         runOnUiThread(() -> {
-            if (mRovinReady)
+            if (mRovinReady) {
+                Log.d(LOGTAG, "Rovin Runtime: signalReadyForVr called but mRovinReady is already true. Ignoring.");
                 return;
+            }
             mRovinReady = true;
-            Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
+            Log.i(LOGTAG, "Rovin Runtime: Received READY signal. Handshake complete.");
 
             // Clear the native blackout/loading card immediately
             onDismissWebXRInterstitial();
@@ -858,13 +860,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             // Force hide all browser chrome remnants
             setPrimaryBrowserChromeVisible(false);
 
-            // If the landing widget is still visible (e.g. race during auto-launch), hide
-            // it
+            // If the landing widget is still visible (e.g. race during auto-launch), hide it
             if (mRovinLandingWidget != null) {
                 mRovinLandingWidget.hide(REMOVE_WIDGET);
             }
 
-            Log.i(LOGTAG, "Rovin Runtime: Handshake complete, triggering relaunchImmersiveMode.");
+            Log.i(LOGTAG, "Rovin Runtime: Handshake success. Triggering auto-launch.");
             stopRovinStartupPolling();
             relaunchImmersiveMode();
         });
@@ -903,25 +904,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         });
     }
 
-    private void startRovinReadinessProbe() {
-        rovinLog("System: Starting readiness probe...");
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (mRovinReady || isFinishing() || isDestroyed())
-                    return;
-
-                WindowWidget focused = (mWindows != null) ? mWindows.getFocusedWindow() : null;
-                if (focused != null && focused.getSession() != null) {
-                    rovinLog("System: Probing for JS signal...");
-                    String js = "javascript:(function(){ if(window.__rovin_is_fully_loaded__) { prompt('__rovin_ready__', 'ready'); } })()";
-                    focused.getSession().loadUri(js);
-                }
-
-                mHandler.postDelayed(this, 1000);
-            }
-        }, 1000);
-    }
 
     private void saveRovinLogs() {
         try {
@@ -1333,7 +1315,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
-        startRovinReadinessProbe();
     }
 
     private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
@@ -1350,8 +1331,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         setPrimaryBrowserChromeVisible(false);
         mWindows.openInKioskMode(target.url);
-        startRovinReadinessProbe();
-        setPrimaryBrowserChromeVisible(false);
         startRovinStartupPolling();
     }
 
