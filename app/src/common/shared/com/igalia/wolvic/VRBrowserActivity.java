@@ -804,8 +804,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void relaunchImmersiveMode() {
-        if (mIsLaunchingVr) {
-            Log.i(LOGTAG, "Rovin Runtime: VR Relaunch already in progress, skipping.");
+        if (mIsLaunchingVr || mRovinImmersiveActiveConfirmed) {
             return;
         }
 
@@ -814,46 +813,23 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
 
-        final String px = mImmersiveParentElementXPath;
-        final String tx = mImmersiveTargetElementXPath;
-
-        // Give it a small delay to ensure the engine is ready to accept a new WebXR
-        // session request
+        // ROVIN: Use Native Authority for the VR transition.
+        // Instead of injecting JS (which is often blocked by Chromium without a user gesture),
+        // we use the internal Wolvic API which provides a trusted gesture context.
         mIsLaunchingVr = true;
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            mIsLaunchingVr = false;
-            if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue() || mRovinImmersiveActiveConfirmed) {
-                return;
+        runOnUiThread(() -> {
+            Uri targetUri = getIntent().getData();
+            if (targetUri == null) {
+                String current = mWindows.getFocusedWindow().getSession().getCurrentUri();
+                targetUri = Uri.parse(current);
             }
 
-            // Try the direct auto-resume function first, then fall back to XPath click
-            // This is safer and more reliable than raw XPath evaluation.
-            String js = String.format(
-                    "javascript:void((function(){" +
-                            "  if(window.rovin_auto_resume){" +
-                            "    console.log('[rovin:relaunch] Calling window.rovin_auto_resume');" +
-                            "    window.rovin_auto_resume('native-warm-start');" +
-                            "    return;" +
-                            "  }" +
-                            "  function g(d,x){ try { let r=d.evaluate(x,d,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null); return r.singleNodeValue; } catch(e){return null;} }"
-                            +
-                            "  let px='%s'; let tx='%s';" +
-                            "  if(!tx || tx === '' || tx === 'null') return;" +
-                            "  let p=document;" +
-                            "  if(px && px !== '' && px !== 'null'){ let e=g(document,px); if(e) p=e.contentDocument||e.contentWindow.document; }"
-                            +
-                            "  let t=g(p,tx);" +
-                            "  if(t){ console.log('[rovin:relaunch] Clicking VR button'); t.click(); }" +
-                            "})())",
-                    px != null ? px.replace("'", "\\'") : "",
-                    tx != null ? tx.replace("'", "\\'") : "");
+            Log.i(LOGTAG, "Rovin Runtime: Triggering NATIVE immersive launch (Trusted Gesture)");
+            mWindows.openInImmersiveMode(targetUri, mImmersiveParentElementXPath, mImmersiveTargetElementXPath);
 
-            Log.d(LOGTAG, "Auto-relaunching immersive mode on resume...");
-            if (mWindows != null && mWindows.getFocusedWindow() != null
-                    && mWindows.getFocusedWindow().getSession() != null) {
-                mWindows.getFocusedWindow().getSession().loadUri(js);
-            }
-        }, 800);
+            // Cooldown to prevent multiple simultaneous launch attempts
+            new Handler(Looper.getMainLooper()).postDelayed(() -> mIsLaunchingVr = false, 5000);
+        });
     }
 
     public void signalReadyForVr() {
