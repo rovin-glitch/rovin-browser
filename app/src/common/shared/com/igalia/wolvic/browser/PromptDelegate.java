@@ -444,7 +444,7 @@ public class PromptDelegate implements
         }
 
         VRBrowserActivity activity = (VRBrowserActivity) mContext;
-        Log.i(LOGTAG, "PromptDelegate: __rovin_immersive_active__ received. VR is confirmed stable.");
+        Log.i(LOGTAG, "PromptDelegate: __rovin_immersive_active__ received! Signaling activity.");
         activity.handleRovinImmersiveActive();
         
         result.complete(textPrompt.confirm("ok"));

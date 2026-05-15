@@ -152,6 +152,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinReady = false;
     private boolean mHasAttemptedInitialRelaunch = false;
     private boolean mIsLaunchingVr = false;
+    private boolean mRovinImmersiveActiveConfirmed = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
@@ -821,7 +822,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mIsLaunchingVr = true;
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             mIsLaunchingVr = false;
-            if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue()) {
+            if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue() || mRovinImmersiveActiveConfirmed) {
                 return;
             }
 
@@ -934,6 +935,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     public void handleRovinImmersiveActive() {
         Log.i(LOGTAG, "Rovin Runtime: JS signaled Immersive Active. Killing all startup hooks.");
+        mRovinImmersiveActiveConfirmed = true;
         stopRovinStartupPolling();
     }
 
