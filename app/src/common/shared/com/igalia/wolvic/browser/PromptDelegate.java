@@ -2,6 +2,7 @@ package com.igalia.wolvic.browser;
 
 import android.app.Application;
 import android.content.Context;
+import android.util.Log;
 import android.net.Uri;
 import android.util.Log;
 
