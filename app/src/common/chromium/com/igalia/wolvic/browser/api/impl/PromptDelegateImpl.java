@@ -98,6 +98,7 @@ class PromptDelegateImpl implements UserDialogManagerBridge.Delegate {
     @Override
     public void onTextDialog(@NonNull String message, @NonNull String defaultUserInput,
                              UserDialogManagerBridge.DialogCallback dialogCallback) {
+        Log.d(LOGTAG, "PromptDelegateImpl: onTextDialog received! Message=" + message);
         if (mDelegate != null) {
             mDelegate.onTextPrompt(mSession, new TextPrompt(dialogCallback, message, defaultUserInput));
         } else {

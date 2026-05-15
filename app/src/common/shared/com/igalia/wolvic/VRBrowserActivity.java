@@ -885,6 +885,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     public void startRovinStartupPolling() {
+        Log.i(LOGTAG, "Rovin Runtime: startRovinStartupPolling() called.");
         runOnUiThread(() -> {
             Log.i(LOGTAG, "Rovin Runtime: Starting native-led readiness polling...");
             mStartupPollingCount = 0;
