@@ -972,6 +972,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         runOnUiThread(() -> {
             if (loaded) {
                 Log.i(LOGTAG, "Rovin Runtime: Polling success! Engine is fully loaded.");
+                rovinLog("System: Polling success! Triggering VR handshake.");
                 signalReadyForVr();
             }
         });
