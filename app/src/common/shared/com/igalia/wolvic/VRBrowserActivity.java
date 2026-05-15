@@ -922,6 +922,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
     }
 
+    public void handleRovinImmersiveActive() {
+        Log.i(LOGTAG, "Rovin Runtime: JS signaled Immersive Active. Killing all startup hooks.");
+        stopRovinStartupPolling();
+    }
+
     public void stopRovinStartupPolling() {
         runOnUiThread(() -> {
             if (mStartupPollingHandler != null && mStartupPollingRunnable != null) {

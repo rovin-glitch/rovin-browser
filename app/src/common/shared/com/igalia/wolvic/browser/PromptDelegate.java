@@ -72,6 +72,7 @@ public class PromptDelegate implements
     private static final String ROVIN_LOG_PROMPT_PREFIX = "__rovin_log__:";
     private static final String ROVIN_SAVE_LOGS_PROMPT = "__rovin_save_logs__";
     private static final String ROVIN_LOADED_PROMPT_MESSAGE = "__rovin_is_fully_loaded__";
+    private static final String ROVIN_IMMERSIVE_ACTIVE_MESSAGE = "__rovin_immersive_active__";
     private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
@@ -250,6 +251,10 @@ public class PromptDelegate implements
             return result;
         }
 
+        if (handleRovinImmersiveActivePrompt(textPrompt, result)) {
+            return result;
+        }
+
         // ROVIN: Deadlock Safety Valve
         // If the message starts with __rovin_ but wasn't handled by the specific handlers above,
         // we must CONSUME it and return immediately. This prevents unhandled bridge messages
@@ -423,6 +428,24 @@ public class PromptDelegate implements
         
         Log.d(LOGTAG, "PromptDelegate: __rovin_is_fully_loaded__ response: " + loadedStr);
         activity.handleRovinLoadedResult(loaded);
+        
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinImmersiveActivePrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_IMMERSIVE_ACTIVE_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        Log.i(LOGTAG, "PromptDelegate: __rovin_immersive_active__ received. VR is confirmed stable.");
+        activity.handleRovinImmersiveActive();
         
         result.complete(textPrompt.confirm("ok"));
         return true;
