@@ -153,7 +153,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
-    private static final String ROVIN_POLL_LOADED_JS = "javascript:window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__)";
+    private static final String ROVIN_POLL_LOADED_JS = "javascript:void(window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__))";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
