@@ -151,6 +151,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mLaunchImmersive = false;
     private boolean mRovinReady = false;
     private boolean mHasAttemptedInitialRelaunch = false;
+    private boolean mIsLaunchingVr = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
@@ -401,6 +402,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     BuildConfig.APPLICATION_ID + "." + getString(R.string.app_permission_name), null);
         }
 
+        mLaunchImmersive = false;
         mLastGesture = NoGesture;
         mWidgetUpdateListeners = new LinkedList<>();
         mPermissionListeners = new LinkedList<>();
@@ -801,6 +803,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void relaunchImmersiveMode() {
+        if (mIsLaunchingVr) {
+            Log.i(LOGTAG, "Rovin Runtime: VR Relaunch already in progress, skipping.");
+            return;
+        }
+
         if (mWindows == null || mWindows.getFocusedWindow() == null
                 || mWindows.getFocusedWindow().getSession() == null) {
             return;
@@ -811,7 +818,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         // Give it a small delay to ensure the engine is ready to accept a new WebXR
         // session request
+        mIsLaunchingVr = true;
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            mIsLaunchingVr = false;
             if (isFinishing() || mIsBackgrounding || mIsPresentingImmersive.getValue()) {
                 return;
             }
