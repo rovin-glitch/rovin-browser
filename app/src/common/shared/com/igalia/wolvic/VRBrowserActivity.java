@@ -150,6 +150,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private boolean mLaunchImmersive = false;
     private boolean mRovinReady = false;
+    private boolean mHasAttemptedInitialRelaunch = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
@@ -950,11 +951,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         WindowWidget focusedWindow = mWindows.getFocusedWindow();
         if (focusedWindow != null && focusedWindow.getSession() != null) {
             // If the handshake was already successful but we are still not in VR, 
-            // we should re-trigger the relaunch every few attempts.
+            // we should re-trigger the relaunch immediately the first time, then every 4 attempts.
             if (mRovinReady) {
-                if (mStartupPollingCount % 4 == 0) {
-                    Log.i(LOGTAG, "Rovin Runtime: Handshake was success but still in 2D. Retrying relaunch.");
-                    rovinLog("System: Still in 2D. Retrying VR handshake.");
+                if (!mHasAttemptedInitialRelaunch || mStartupPollingCount % 4 == 0) {
+                    Log.i(LOGTAG, "Rovin Runtime: Triggering VR transition (Initial=" + !mHasAttemptedInitialRelaunch + ")");
+                    mHasAttemptedInitialRelaunch = true;
                     relaunchImmersiveMode();
                 }
             } else {
@@ -1249,8 +1250,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mImmersiveParentElementXPath = extras.getString(EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH);
                 mImmersiveTargetElementXPath = extras.getString(EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH);
 
-                // Open in immersive requires specific information to be present
-                mLaunchImmersive |= targetUri != null && mImmersiveTargetElementXPath != null;
+                // ROVIN: Disable native-forced auto-immersive launch during startup.
+                // We want the game to load in 2D first, then use our polling handshake
+                // to trigger VR when the JS engine is actually ready.
+                // mLaunchImmersive |= targetUri != null && mImmersiveTargetElementXPath != null;
+                Log.i(LOGTAG, "Rovin Runtime: EXTRA_LAUNCH_IMMERSIVE detected but suppressed for handshake stability.");
             }
         }
 
