@@ -152,7 +152,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinReady = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
-    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
+    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
     private static final String ROVIN_POLL_LOADED_JS = "javascript:void(window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__))";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
@@ -818,7 +818,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             // Try the direct auto-resume function first, then fall back to XPath click
             // This is safer and more reliable than raw XPath evaluation.
             String js = String.format(
-                    "javascript:(function(){" +
+                    "javascript:void((function(){" +
                             "  if(window.rovin_auto_resume){" +
                             "    console.log('[rovin:relaunch] Calling window.rovin_auto_resume');" +
                             "    window.rovin_auto_resume('native-warm-start');" +
@@ -833,7 +833,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                             +
                             "  let t=g(p,tx);" +
                             "  if(t){ console.log('[rovin:relaunch] Clicking VR button'); t.click(); }" +
-                            "})()",
+                            "})())",
                     px != null ? px.replace("'", "\\'") : "",
                     tx != null ? tx.replace("'", "\\'") : "");
 
@@ -866,7 +866,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             }
 
             Log.i(LOGTAG, "Rovin Runtime: Handshake success. Triggering auto-launch.");
-            stopRovinStartupPolling();
+            // ROVIN: We no longer stop polling here. 
+            // The polling loop will now handle retries if immersive mode fails to start.
             relaunchImmersiveMode();
         });
     }
@@ -934,15 +935,33 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mStartupPollingCount++;
         Log.d(LOGTAG, "Rovin Runtime: Polling readiness... Attempt " + mStartupPollingCount);
 
+        // If we are already in immersive mode, we can finally stop polling.
+        if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+            Log.i(LOGTAG, "Rovin Runtime: Immersive mode detected. Stopping startup polling.");
+            stopRovinStartupPolling();
+            return;
+        }
+
         WindowWidget focusedWindow = mWindows.getFocusedWindow();
         if (focusedWindow != null && focusedWindow.getSession() != null) {
-            focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
+            // If the handshake was already successful but we are still not in VR, 
+            // we should re-trigger the relaunch every few attempts.
+            if (mRovinReady) {
+                if (mStartupPollingCount % 4 == 0) {
+                    Log.i(LOGTAG, "Rovin Runtime: Handshake was success but still in 2D. Retrying relaunch.");
+                    rovinLog("System: Still in 2D. Retrying VR handshake.");
+                    relaunchImmersiveMode();
+                }
+            } else {
+                focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
+            }
         }
 
         if (mStartupPollingCount >= ROVIN_STARTUP_MAX_ATTEMPTS) {
             Log.w(LOGTAG, "Rovin Runtime: Polling timeout exceeded (" + ROVIN_STARTUP_MAX_ATTEMPTS
                     + "s). Showing fallback UI.");
             showStartupFallbackUI();
+            stopRovinStartupPolling();
             return;
         }
 
