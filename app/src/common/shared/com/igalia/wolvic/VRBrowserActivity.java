@@ -149,6 +149,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final long BATTERY_UPDATE_INTERVAL = 60 * 1_000_000_000L; // 60 seconds
 
     private boolean mLaunchImmersive = false;
+    private boolean mRovinReady = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
@@ -2994,4 +2995,64 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private native void setPointerModeNative(@PointerMode int aMode);
 
     private native void setHandTrackingEnabledNative(boolean value);
+
+    public void signalReadyForVr() {
+        if (mRovinReady) return;
+        mRovinReady = true;
+        Log.i(LOGTAG, "Rovin Runtime: Received READY signal from Web app, page is initialized.");
+        runOnUiThread(() -> {
+            // Reset browser state for clean immersive entry
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.hide(REMOVE_WIDGET);
+            }
+            
+            Log.i(LOGTAG, "Rovin Runtime: Handshake complete, triggering relaunchImmersiveMode.");
+            relaunchImmersiveMode();
+        });
+    }
+
+    public void rovinLog(String message) {
+        String logLine = "[" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + "] " + message;
+        Log.i(LOGTAG, "Rovin Console: " + logLine);
+        runOnUiThread(() -> {
+            if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+                mRovinLandingWidget.appendLog(logLine);
+            }
+        });
+    }
+
+    private void startRovinReadinessProbe() {
+        rovinLog("System: Starting readiness probe...");
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (mRovinReady || isFinishing() || isDestroyed()) return;
+                
+                WindowWidget focused = (mWindows != null) ? mWindows.getFocusedWindow() : null;
+                if (focused != null && focused.getSession() != null) {
+                    rovinLog("System: Probing for JS signal...");
+                    String js = "javascript:(function(){ if(window.__rovin_is_fully_loaded__) { prompt('__rovin_ready__', 'ready'); } })()";
+                    focused.getSession().loadUri(js);
+                }
+                
+                mHandler.postDelayed(this, 1000);
+            }
+        }, 1000);
+    }
+
+    private void saveRovinLogs() {
+        try {
+            java.io.File path = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.File file = new java.io.File(path, "NeonChuck_Startup_Log.txt");
+            java.io.FileWriter writer = new java.io.FileWriter(file, true);
+            writer.write("--- LOG DUMP: " + new java.util.Date().toString() + " ---\n");
+            writer.write("Startup sequence initiated.\n");
+            writer.close();
+            rovinLog("System: Logs saved to Downloads/NeonChuck_Startup_Log.txt");
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Failed to save logs", e);
+        }
+    }
 }
