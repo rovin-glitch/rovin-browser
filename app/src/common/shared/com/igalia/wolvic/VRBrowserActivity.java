@@ -266,7 +266,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     static final long RESET_CRASH_COUNT_DELAY = 5000;
     static final int UPDATE_NATIVE_WIDGETS_DELAY = 50; // milliseconds
 
-    static final String LOGTAG = SystemUtils.createLogtag(VRBrowserActivity.class);
+    static final String LOGTAG = "VRB"; // Forced to VRB for release visibility
     ConcurrentHashMap<Integer, Widget> mWidgets;
     private int mWidgetHandleIndex = 1;
     AudioEngine mAudioEngine;
@@ -1458,7 +1458,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return null;
         }
 
-        return baseUrl + getBundledEntryRequestPath();
+        return baseUrl + getBundledEntryRequestPath() + "?debugBoot=1";
     }
 
     @Nullable
