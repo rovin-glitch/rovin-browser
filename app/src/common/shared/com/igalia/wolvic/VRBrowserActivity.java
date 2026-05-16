@@ -1045,7 +1045,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
                     @Override
                     public void onPlayRequested() {
-                        launchRovinExperience(resolveRovinLaunchTarget());
+                        retryRovinStartupFromFallback();
                     }
 
                     @Override
@@ -1068,6 +1068,25 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinLandingWidget.bindError(BuildConfig.ROVIN_PRODUCT_TITLE, target.statusMessage);
             }
             mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+        });
+    }
+
+    private void retryRovinStartupFromFallback() {
+        runOnUiThread(() -> {
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow != null && focusedWindow.getSession() != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Retrying startup readiness on current page.");
+                if (mRovinLandingWidget != null) {
+                    mRovinLandingWidget.hide(REMOVE_WIDGET);
+                }
+                onDismissWebXRInterstitial();
+                setPrimaryBrowserChromeVisible(false);
+                startRovinStartupPolling();
+                return;
+            }
+
+            Log.w(LOGTAG, "Rovin Runtime: Fallback retry has no focused page; relaunching target.");
+            launchRovinExperience(resolveRovinLaunchTarget());
         });
     }
 
@@ -1545,7 +1564,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return null;
         }
 
-        return baseUrl + getBundledEntryRequestPath() + "?debugBoot=1";
+        return baseUrl + getBundledEntryRequestPath();
     }
 
     @Nullable
