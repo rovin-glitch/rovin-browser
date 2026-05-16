@@ -157,6 +157,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
+    private static final String ROVIN_READY_TITLE_MARKER = "__rovin_ready__";
     private static final String ROVIN_POLL_LOADED_JS = "javascript:void(function(){var loaded=window.__rovin_is_fully_loaded__===true;var stage=window.__rovin_boot_stage__||'unset';var error=window.__rovin_boot_error__||'';window.prompt('__rovin_is_fully_loaded__',loaded?'true':('false|'+stage+(error?'|'+error:'')));}())";
     private static final String ROVIN_TRIGGER_START_JS = "javascript:void(function(){if(window.triggerStartCta){window.triggerStartCta('native-cold-boot');}else{window.prompt('__rovin_log__:Native trigger failed: triggerStartCta missing','ok');}}())";
     private static final String ROVIN_TRIGGER_RESUME_JS = "javascript:void(function(){if(window.rovin_auto_resume){window.rovin_auto_resume('native-warm-resume');}else if(window.triggerStartCta){window.triggerStartCta('native-warm-resume');}else{window.prompt('__rovin_log__:Native warm resume failed: startup bridge missing','ok');}}())";
@@ -908,7 +909,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
         });
     }
-
     public void rovinLog(String message) {
         String logLine = "[" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + "] " + message;
         Log.i(LOGTAG, "Rovin Console: " + logLine);
@@ -996,13 +996,29 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         WindowWidget focusedWindow = mWindows.getFocusedWindow();
         if (focusedWindow != null && focusedWindow.getSession() != null) {
+            String currentTitle = focusedWindow.getSession().getCurrentTitle();
+            if (currentTitle != null && currentTitle.contains(ROVIN_READY_TITLE_MARKER)) {
+                Log.i(LOGTAG, "Rovin Runtime: Readiness title marker detected.");
+                handleRovinLoadedResult(true);
+                return;
+            }
             focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
         }
 
         if (mStartupPollingCount >= ROVIN_STARTUP_MAX_ATTEMPTS) {
             Log.w(LOGTAG, "Rovin Runtime: Polling timeout exceeded (" + ROVIN_STARTUP_MAX_ATTEMPTS
-                    + "s). Showing fallback UI.");
-            showStartupFallbackUI();
+                    + "s). Attempting JS startup bridge without native fallback UI.");
+            if (focusedWindow != null && focusedWindow.getSession() != null) {
+                rovinLog("System: Native readiness timed out; attempting JS startup bridge.");
+                mRovinTransitionTriggered = true;
+                focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
+            } else {
+                mRovinReady = false;
+                mIsLaunchingVr = false;
+                mRovinImmersiveActiveConfirmed = false;
+                mRovinTransitionTriggered = false;
+                cancelPendingRovinAutoLaunch();
+            }
             stopRovinStartupPolling();
             return;
         }
@@ -1011,7 +1027,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mStartupPollingHandler.postDelayed(mStartupPollingRunnable, ROVIN_STARTUP_POLLING_INTERVAL_MS);
         }
     }
-
     public void handleRovinLoadedResult(boolean loaded) {
         runOnUiThread(() -> {
             if (loaded) {
@@ -1089,7 +1104,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             launchRovinExperience(resolveRovinLaunchTarget());
         });
     }
-
     @Override
     protected void onDestroy() {
         ((VRBrowserApplication) getApplication()).onActivityDestroy();
