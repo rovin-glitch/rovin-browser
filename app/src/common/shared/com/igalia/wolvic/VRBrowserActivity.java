@@ -153,6 +153,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mHasAttemptedInitialRelaunch = false;
     private boolean mIsLaunchingVr = false;
     private boolean mRovinImmersiveActiveConfirmed = false;
+    private boolean mRovinTransitionTriggered = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
@@ -804,7 +805,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void relaunchImmersiveMode() {
-        if (mIsLaunchingVr || mRovinImmersiveActiveConfirmed) {
+        if (mIsLaunchingVr || mRovinImmersiveActiveConfirmed || mRovinTransitionTriggered) {
             return;
         }
 
@@ -813,18 +814,23 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
 
+        String currentUriStr = mWindows.getFocusedWindow().getSession().getCurrentUri();
+        if (currentUriStr != null && currentUriStr.contains("immersiveTargetElementXPath=")) {
+            Log.i(LOGTAG, "Rovin Runtime: Immersive parameters already present in URL. Awaiting auto-click.");
+            mRovinTransitionTriggered = true;
+            return;
+        }
+
         // ROVIN: Use Native Authority for the VR transition.
-        // Instead of injecting JS (which is often blocked by Chromium without a user gesture),
-        // we use the internal Wolvic API which provides a trusted gesture context.
+        mRovinTransitionTriggered = true;
         mIsLaunchingVr = true;
         runOnUiThread(() -> {
             Uri targetUri = getIntent().getData();
             if (targetUri == null) {
-                String current = mWindows.getFocusedWindow().getSession().getCurrentUri();
-                targetUri = Uri.parse(current);
+                targetUri = Uri.parse(currentUriStr);
             }
 
-            Log.i(LOGTAG, "Rovin Runtime: Triggering NATIVE immersive launch (Trusted Gesture)");
+            Log.i(LOGTAG, "Rovin Runtime: Triggering NATIVE immersive launch (One-Shot)");
             mWindows.openInImmersiveMode(targetUri, mImmersiveParentElementXPath, mImmersiveTargetElementXPath);
 
             // Cooldown to prevent multiple simultaneous launch attempts
@@ -939,12 +945,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (focusedWindow != null && focusedWindow.getSession() != null) {
             // If the handshake was already successful but we are still not in VR, 
             // we should re-trigger the relaunch immediately the first time, then every 4 attempts.
-            if (mRovinReady) {
-                if (!mHasAttemptedInitialRelaunch || mStartupPollingCount % 4 == 0) {
-                    Log.i(LOGTAG, "Rovin Runtime: Triggering VR transition (Initial=" + !mHasAttemptedInitialRelaunch + ")");
-                    mHasAttemptedInitialRelaunch = true;
-                    relaunchImmersiveMode();
-                }
+            if (mRovinReady && !mRovinTransitionTriggered) {
+                Log.i(LOGTAG, "Rovin Runtime: Engine signaled READY. Initiating native launch.");
+                relaunchImmersiveMode();
             } else {
                 focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
             }
