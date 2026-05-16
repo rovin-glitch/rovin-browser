@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
     <uses-permission android:name="${permissionToRemove}" tools:node="remove" />
 
+    <!-- Strip Eye Tracking (Not used by the game, required for store compliance) -->
+    <uses-feature android:name="oculus.software.eye_tracking" tools:node="remove" />
+    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" tools:node="remove" />
+
     <uses-feature android:name="oculus.software.handtracking" android:required="false" />
     <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
     <uses-permission android:name="horizonos.permission.HAND_TRACKING" />

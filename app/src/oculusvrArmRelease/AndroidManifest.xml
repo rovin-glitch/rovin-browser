@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>
 
+    <!-- Strip Eye Tracking (Not used by the game, required for store compliance) -->
+    <uses-feature android:name="oculus.software.eye_tracking" tools:node="remove" />
+    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" tools:node="remove" />
+
     <!-- Not needed in Android 10 (API >= 29) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
