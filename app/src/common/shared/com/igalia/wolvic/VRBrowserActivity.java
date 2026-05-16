@@ -866,6 +866,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             Log.i(LOGTAG, "Rovin Runtime: Handshake success. Calling JS startup bridge.");
             mStartupPollingCount = 0;
             mRovinTransitionTriggered = true;
+            stopRovinStartupPolling();
             focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
         });
     }
@@ -942,6 +943,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private void pollRovinLoadedStatus() {
         mStartupPollingCount++;
         Log.d(LOGTAG, "Rovin Runtime: Polling readiness... Attempt " + mStartupPollingCount);
+
+        if (mRovinTransitionTriggered) {
+            Log.i(LOGTAG, "Rovin Runtime: Startup bridge already triggered. Stopping readiness polling.");
+            stopRovinStartupPolling();
+            return;
+        }
 
         if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
             Log.i(LOGTAG, "Rovin Runtime: Immersive mode detected. Stopping startup polling.");
