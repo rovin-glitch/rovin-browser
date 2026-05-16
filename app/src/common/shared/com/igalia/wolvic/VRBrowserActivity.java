@@ -159,6 +159,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
     private static final String ROVIN_POLL_LOADED_JS = "javascript:void(window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__))";
     private static final String ROVIN_TRIGGER_START_JS = "javascript:void(function(){if(window.triggerStartCta){window.triggerStartCta('native-cold-boot');}else{window.prompt('__rovin_log__:Native trigger failed: triggerStartCta missing','ok');}}())";
+    private static final String ROVIN_TRIGGER_RESUME_JS = "javascript:void(function(){if(window.rovin_auto_resume){window.rovin_auto_resume('native-warm-resume');}else if(window.triggerStartCta){window.triggerStartCta('native-warm-resume');}else{window.prompt('__rovin_log__:Native warm resume failed: startup bridge missing','ok');}}())";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
@@ -803,6 +804,43 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         // if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
         // relaunchImmersiveMode();
         // }
+        resumeRovinImmersiveIfNeeded("activity-resume");
+    }
+
+    private boolean shouldPreserveRovinWarmIntent() {
+        return !isFinishing() && (mLaunchImmersive || mRovinImmersiveActiveConfirmed
+                || (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())));
+    }
+
+    private void resumeRovinImmersiveIfNeeded(@NonNull final String reason) {
+        if (!shouldPreserveRovinWarmIntent()) {
+            return;
+        }
+        if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+            Log.i(LOGTAG, "Rovin Runtime: Warm resume skipped; immersive is already presenting. reason=" + reason);
+            return;
+        }
+
+        runOnUiThread(() -> {
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: Warm resume requested but no focused session is available. reason=" + reason);
+                return;
+            }
+
+            Log.i(LOGTAG, "Rovin Runtime: Warm resume preserving existing page. reason=" + reason);
+            stopRovinStartupPolling();
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.hide(REMOVE_WIDGET);
+            }
+            mRovinReady = true;
+            mRovinTransitionTriggered = true;
+            mIsLaunchingVr = true;
+            focusedWindow.getSession().loadUri(ROVIN_TRIGGER_RESUME_JS);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> mIsLaunchingVr = false, 5000);
+        });
     }
 
     private void relaunchImmersiveMode() {
@@ -1094,6 +1132,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
+        } else if (shouldPreserveRovinWarmIntent()) {
+            Log.i("VRB", "NeonChuck: warm intent while runtime is active; preserving existing immersive page");
+            resumeRovinImmersiveIfNeeded("warm-intent");
         } else if (isLaunchImmersive() && !isFinishing()) {
             Log.i("VRB", "NeonChuck: onNewIntent warm-start detected");
             Uri targetUri = intent.getData();
