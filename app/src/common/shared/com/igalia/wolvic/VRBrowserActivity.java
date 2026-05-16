@@ -156,8 +156,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinTransitionTriggered = false;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
-    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 300;
+    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
     private static final String ROVIN_POLL_LOADED_JS = "javascript:void(window.prompt('__rovin_is_fully_loaded__', window.__rovin_is_fully_loaded__))";
+    private static final String ROVIN_TRIGGER_START_JS = "javascript:void(function(){if(window.triggerStartCta){window.triggerStartCta('native-cold-boot');}else{window.prompt('__rovin_log__:Native trigger failed: triggerStartCta missing','ok');}}())";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
@@ -847,21 +848,25 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinReady = true;
             Log.i(LOGTAG, "Rovin Runtime: Received READY signal. Handshake complete.");
 
-            // Clear the native blackout/loading card immediately
             onDismissWebXRInterstitial();
-
-            // Force hide all browser chrome remnants
             setPrimaryBrowserChromeVisible(false);
 
-            // If the landing widget is still visible (e.g. race during auto-launch), hide it
             if (mRovinLandingWidget != null) {
                 mRovinLandingWidget.hide(REMOVE_WIDGET);
             }
 
-            Log.i(LOGTAG, "Rovin Runtime: Handshake success. Triggering auto-launch.");
-            // ROVIN: We no longer stop polling here. 
-            // The polling loop will now handle retries if immersive mode fails to start.
-            relaunchImmersiveMode();
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: READY received but no focused session is available.");
+                mRovinReady = false;
+                mRovinTransitionTriggered = false;
+                return;
+            }
+
+            Log.i(LOGTAG, "Rovin Runtime: Handshake success. Calling JS startup bridge.");
+            mStartupPollingCount = 0;
+            mRovinTransitionTriggered = true;
+            focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
         });
     }
 
@@ -883,6 +888,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         runOnUiThread(() -> {
             Log.i(LOGTAG, "Rovin Runtime: Starting native-led readiness polling...");
             mStartupPollingCount = 0;
+            mRovinReady = false;
+            mIsLaunchingVr = false;
+            mRovinImmersiveActiveConfirmed = false;
+            mRovinTransitionTriggered = false;
             if (mStartupPollingHandler == null) {
                 mStartupPollingHandler = new Handler(Looper.getMainLooper());
             }
@@ -934,7 +943,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mStartupPollingCount++;
         Log.d(LOGTAG, "Rovin Runtime: Polling readiness... Attempt " + mStartupPollingCount);
 
-        // If we are already in immersive mode, we can finally stop polling.
         if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
             Log.i(LOGTAG, "Rovin Runtime: Immersive mode detected. Stopping startup polling.");
             stopRovinStartupPolling();
@@ -943,14 +951,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         WindowWidget focusedWindow = mWindows.getFocusedWindow();
         if (focusedWindow != null && focusedWindow.getSession() != null) {
-            // If the handshake was already successful but we are still not in VR, 
-            // we should re-trigger the relaunch immediately the first time, then every 4 attempts.
-            if (mRovinReady && !mRovinTransitionTriggered) {
-                Log.i(LOGTAG, "Rovin Runtime: Engine signaled READY. Initiating native launch.");
-                relaunchImmersiveMode();
-            } else {
-                focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
-            }
+            focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
         }
 
         if (mStartupPollingCount >= ROVIN_STARTUP_MAX_ATTEMPTS) {
@@ -978,10 +979,50 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void showStartupFallbackUI() {
         runOnUiThread(() -> {
+            mRovinReady = false;
+            mIsLaunchingVr = false;
+            mRovinImmersiveActiveConfirmed = false;
+            mRovinTransitionTriggered = false;
+            cancelPendingRovinAutoLaunch();
+
             if (mWebXRInterstitial != null) {
                 Log.i(LOGTAG, "Rovin Runtime: Showing fallback 'Enter Game' button.");
                 mWebXRInterstitial.showFallbackButton();
+                return;
             }
+
+            Log.i(LOGTAG, "Rovin Runtime: Showing Rovin landing fallback for manual retry.");
+            final RovinLaunchTarget target = resolveRovinLaunchTarget();
+            setPrimaryBrowserChromeVisible(false);
+
+            if (mRovinLandingWidget == null) {
+                mRovinLandingWidget = new RovinLandingDialogWidget(this);
+                mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
+                    @Override
+                    public void onPlayRequested() {
+                        launchRovinExperience(resolveRovinLaunchTarget());
+                    }
+
+                    @Override
+                    public void onRecoveryBrowserRequested() {
+                        openRecoveryBrowser(resolveRovinLaunchTarget());
+                    }
+
+                    @Override
+                    public void onRetryRequested() {
+                        showRovinLanding();
+                    }
+                });
+            }
+
+            if (target.valid) {
+                mRovinLandingWidget.bindReady(
+                        BuildConfig.ROVIN_PRODUCT_TITLE,
+                        "Startup took longer than expected. Press Play to retry.");
+            } else {
+                mRovinLandingWidget.bindError(BuildConfig.ROVIN_PRODUCT_TITLE, target.statusMessage);
+            }
+            mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
         });
     }
 
