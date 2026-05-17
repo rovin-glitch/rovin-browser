@@ -9,6 +9,7 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.igalia.wolvic.BuildConfig;
 import com.igalia.wolvic.R;
 
 public class RovinLandingDialogWidget extends PromptDialogWidget {
@@ -61,7 +62,7 @@ public class RovinLandingDialogWidget extends PromptDialogWidget {
         setTitle(R.string.rovin_landing_title);
         setBody(getContext().getString(R.string.rovin_landing_body, gameTitle));
         setDescription(description);
-        setButtons(new int[] { R.string.rovin_landing_play_resume });
+        setButtons(new String[] { BuildConfig.ROVIN_LANDING_PLAY_LABEL });
     }
 
     public void bindError(@NonNull String gameTitle, @NonNull String message) {

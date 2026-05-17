@@ -120,11 +120,42 @@ def GECKO_RELEASE_VERSION_NAME = '1.8.3'
 def CHROMIUM_BROWSER_RELEASE_VERSION_NAME = '1.2.3-browser'
 def CHROMIUM_RUNTIME_RELEASE_VERSION_NAME = '1.0.0-runtime'
 
+def getRovinProperty = { name, fallback ->
+    def propertyName = "rovin.${name}"
+    if (project.hasProperty(propertyName)) {
+        return project.property(propertyName).toString()
+    }
+    return fallback
+}
+
+def getRovinBooleanProperty = { name, fallback ->
+    def value = getRovinProperty(name, fallback.toString())
+    return value.toString().toBoolean()
+}
+
+def rovinStringLiteral = { value ->
+    def text = value == null ? "" : value.toString()
+    return '"' + text.replace("\\", "\\\\").replace("\"", "\\\"") + '"'
+}
+
+def rovinApplicationId = getRovinProperty("applicationId", "com.rovingames.runtime")
+def rovinAppName = getRovinProperty("appName", "Rovin Runtime")
+def rovinArchiveName = getRovinProperty("archiveName", "RovinRuntime")
+def rovinHomepageUrl = getRovinProperty("homepageUrl", "")
+def rovinHostedGameUrl = getRovinProperty("hostedGameUrl", "")
+def rovinProductTitle = getRovinProperty("productTitle", "Rovin Runtime")
+def rovinLandingPlayLabel = getRovinProperty("landingPlayLabel", "Open Experience")
+def rovinBundledContentEnabled = getRovinBooleanProperty("bundledContentEnabled", true)
+def rovinBundledEntryPath = getRovinProperty("bundledEntryPath", "bundled-app/index.html")
+def rovinLauncherActivityName = getRovinProperty("launcherActivityName", ".RovinRuntimeActivity")
+def rovinDefaultEnvironmentId = getRovinProperty("defaultEnvironmentId", "void")
+
 android {
     namespace 'com.igalia.wolvic'
     compileSdkVersion 35
     defaultConfig {
-        applicationId "com.rovingames.runtime"
+        applicationId rovinApplicationId
+        manifestPlaceholders["runtimeActivityName"] = rovinLauncherActivityName
         ndk { abiFilters 'arm64-v8a' }
         minSdkVersion 24
         targetSdkVersion 34
@@ -145,18 +176,20 @@ android {
         buildConfigField 'String', 'ANNOUNCEMENTS_ENDPOINT', '"https://igalia.github.io/wolvic/announcements.json"'
         buildConfigField 'String', 'EXPERIENCES_ENDPOINT', '"https://igalia.github.io/wolvic/experiences.json"'
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
-        buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', '""'
-        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', '"Rovin Runtime"'
-        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
-        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', '"bundled-app/index.html"'
+        buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', rovinStringLiteral(rovinHostedGameUrl)
+        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', rovinStringLiteral(rovinProductTitle)
+        buildConfigField 'String', 'ROVIN_LANDING_PLAY_LABEL', rovinStringLiteral(rovinLandingPlayLabel)
+        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', rovinBundledContentEnabled.toString()
+        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', rovinStringLiteral(rovinBundledEntryPath)
+        buildConfigField 'String', 'ROVIN_DEFAULT_ENVIRONMENT_ID', rovinStringLiteral(rovinDefaultEnvironmentId)
         buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
         // FEAT-0018: runtime-generic JSON save file config (eligible for Android/Quest Auto Backup via getFilesDir()).
         buildConfigField 'String', 'ROVIN_SAVE_SUBDIR', '"rovin-save"'
         buildConfigField 'String', 'ROVIN_SAVE_FILENAME', '"rovin-save.json"'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue 'string', 'app_name', 'Rovin Runtime'
-        resValue 'string', 'HOMEPAGE_URL', ""
+        resValue 'string', 'app_name', rovinAppName
+        resValue 'string', 'HOMEPAGE_URL', rovinHomepageUrl
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++14 -fexceptions -frtti -Werror" +
@@ -182,7 +215,7 @@ android {
     }
 
     base {
-        archivesName = "RovinRuntime"
+        archivesName = rovinArchiveName
     }
 
     signingConfigs {
@@ -362,7 +395,7 @@ android {
 
         visionglass {
             dimension "platform"
-            applicationId "com.rovingames.runtime"
+            applicationId rovinApplicationId
             applicationIdSuffix ".visionglass"
             resValue "string", "app_name", "Wolvic Vision"
             targetSdkVersion 33
@@ -423,7 +456,7 @@ android {
         runtime {
             dimension "product"
             buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
-            resValue "string", "app_name", "Rovin Runtime"
+            resValue "string", "app_name", rovinAppName
         }
 
         browser {
@@ -448,7 +481,7 @@ android {
         }
 
         mainlandChina {
-            applicationId "com.rovingames.runtime"
+            applicationId rovinApplicationId
             dimension "store"
             buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "true"
             buildConfigField "Boolean", "WEBVIEW_IN_PHONE_UI", "true"

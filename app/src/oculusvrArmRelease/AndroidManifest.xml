@@ -70,7 +70,7 @@
         </activity>
 
         <activity-alias
-            android:name=".RovinRuntimeActivity"
+            android:name="${runtimeActivityName}"
             android:exported="true"
             android:targetActivity=".VRBrowserActivity">
             <intent-filter>
