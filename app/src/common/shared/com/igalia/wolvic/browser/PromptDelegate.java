@@ -73,6 +73,7 @@ public class PromptDelegate implements
     private static final String ROVIN_SAVE_LOGS_PROMPT = "__rovin_save_logs__";
     private static final String ROVIN_LOADED_PROMPT_MESSAGE = "__rovin_is_fully_loaded__";
     private static final String ROVIN_IMMERSIVE_ACTIVE_MESSAGE = "__rovin_immersive_active__";
+    private static final String ROVIN_XR_START_FAILED_MESSAGE = "__rovin_xr_start_failed__";
     private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
@@ -252,6 +253,10 @@ public class PromptDelegate implements
         }
 
         if (handleRovinImmersiveActivePrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinXrStartFailedPrompt(textPrompt, result)) {
             return result;
         }
 
@@ -447,6 +452,25 @@ public class PromptDelegate implements
         Log.i(LOGTAG, "PromptDelegate: __rovin_immersive_active__ received! Signaling activity.");
         activity.handleRovinImmersiveActive();
         
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinXrStartFailedPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_XR_START_FAILED_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        String payload = textPrompt.defaultValue();
+        Log.w(LOGTAG, "PromptDelegate: __rovin_xr_start_failed__ received. payload=" + payload);
+        activity.handleRovinXrStartFailed(payload);
+
         result.complete(textPrompt.confirm("ok"));
         return true;
     }

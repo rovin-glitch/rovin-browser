@@ -156,6 +156,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinTransitionTriggered = false;
     private boolean mRovinNativeVrFocused = false;
     private boolean mRovinPendingNativeFocusStart = false;
+    private int mRovinXrStartFailureCount = 0;
     private Handler mRovinStartupBridgeHandler = null;
     private Runnable mPendingRovinStartupBridge = null;
     private Runnable mPendingRovinWarmResumeFallback = null;
@@ -171,6 +172,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
     private static final long ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS = 2500L;
+    private static final long ROVIN_XR_START_RETRY_DELAY_MS = 5000L;
+    private static final int ROVIN_XR_START_MAX_FAILURES = 8;
     private static final long ROVIN_WARM_RESUME_FALLBACK_DELAY_MS = 12000L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
@@ -1080,6 +1083,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinImmersiveActiveConfirmed = false;
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
+            mRovinXrStartFailureCount = 0;
             resetRovinStartupBridgeState();
             if (mStartupPollingHandler == null) {
                 mStartupPollingHandler = new Handler(Looper.getMainLooper());
@@ -1117,6 +1121,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         Log.i(LOGTAG, "Rovin Runtime: JS signaled Immersive Active. Killing all startup hooks.");
         mRovinImmersiveActiveConfirmed = true;
         mRovinPendingNativeFocusStart = false;
+        mRovinXrStartFailureCount = 0;
         resetRovinStartupBridgeState();
         cancelPendingRovinWarmResumeFallback();
         if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
@@ -1124,6 +1129,61 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinLandingWidget = null;
         }
         stopRovinStartupPolling();
+    }
+
+    public void handleRovinXrStartFailed(@Nullable String payload) {
+        runOnUiThread(() -> {
+            if (mRovinImmersiveActiveConfirmed
+                    || (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue()))) {
+                Log.i(LOGTAG, "Rovin Runtime: Ignoring XR start failure because immersive is already active.");
+                return;
+            }
+
+            mRovinXrStartFailureCount += 1;
+            mIsLaunchingVr = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = true;
+            mRovinReady = true;
+            cancelPendingRovinStartupBridge();
+            stopRovinStartupPolling();
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+
+            Log.w(LOGTAG, "Rovin Runtime: JS WebXR start failed; scheduling native focus-gated retry "
+                    + mRovinXrStartFailureCount + "/" + ROVIN_XR_START_MAX_FAILURES
+                    + ". payload=" + payload);
+            rovinLog("System: WebXR start failed; waiting before native retry "
+                    + mRovinXrStartFailureCount + "/" + ROVIN_XR_START_MAX_FAILURES + ".");
+
+            if (mRovinXrStartFailureCount >= ROVIN_XR_START_MAX_FAILURES) {
+                Log.e(LOGTAG, "Rovin Runtime: WebXR start failed too many times; leaving page alive.");
+                rovinLog("System: WebXR retry limit reached; leaving the loading page alive.");
+                return;
+            }
+
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: XR failure retry deferred; no focused session is available.");
+                return;
+            }
+
+            if (!mRovinNativeVrFocused) {
+                Log.i(LOGTAG, "Rovin Runtime: XR failure retry deferred until native VR focus returns.");
+                return;
+            }
+
+            mPendingRovinStartupBridge = () -> {
+                mPendingRovinStartupBridge = null;
+                WindowWidget currentWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+                if (!mRovinNativeVrFocused) {
+                    Log.i(LOGTAG, "Rovin Runtime: Native VR focus lost before XR failure retry.");
+                    mRovinPendingNativeFocusStart = true;
+                    return;
+                }
+                scheduleRovinStartOnFocusedWindow(currentWindow, "xr-start-failed");
+            };
+            getRovinStartupBridgeHandler().postDelayed(mPendingRovinStartupBridge, ROVIN_XR_START_RETRY_DELAY_MS);
+        });
     }
 
     public void stopRovinStartupPolling() {
@@ -1211,6 +1271,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinImmersiveActiveConfirmed = false;
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
+            mRovinXrStartFailureCount = 0;
             resetRovinStartupBridgeState();
             cancelPendingRovinWarmResumeFallback();
             cancelPendingRovinAutoLaunch();
