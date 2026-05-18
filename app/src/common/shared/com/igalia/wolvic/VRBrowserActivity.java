@@ -158,6 +158,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinPendingNativeFocusStart = false;
     private Handler mRovinStartupBridgeHandler = null;
     private Runnable mPendingRovinStartupBridge = null;
+    private Runnable mPendingRovinWarmResumeFallback = null;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
@@ -170,6 +171,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
     private static final long ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS = 2500L;
+    private static final long ROVIN_WARM_RESUME_FALLBACK_DELAY_MS = 12000L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
     private static final String ROVIN_APP_FOCUS_GAINED_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-gained'));})();";
@@ -838,15 +840,66 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             stopRovinStartupPolling();
             onDismissWebXRInterstitial();
             setPrimaryBrowserChromeVisible(false);
-            if (mRovinLandingWidget != null) {
-                mRovinLandingWidget.hide(REMOVE_WIDGET);
-            }
+            showRovinWarmResumeLoading(reason);
             mRovinReady = true;
             mRovinTransitionTriggered = true;
             mIsLaunchingVr = true;
             focusedWindow.getSession().loadUri(ROVIN_TRIGGER_RESUME_JS);
             new Handler(Looper.getMainLooper()).postDelayed(() -> mIsLaunchingVr = false, 5000);
         });
+    }
+
+    private RovinLandingDialogWidget ensureRovinLandingWidget() {
+        if (mRovinLandingWidget == null) {
+            mRovinLandingWidget = new RovinLandingDialogWidget(this);
+            mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
+                @Override
+                public void onPlayRequested() {
+                    launchRovinExperience(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRecoveryBrowserRequested() {
+                    openRecoveryBrowser(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRetryRequested() {
+                    showRovinLanding();
+                }
+            });
+        }
+        return mRovinLandingWidget;
+    }
+
+    private void showRovinWarmResumeLoading(@NonNull final String reason) {
+        cancelPendingRovinWarmResumeFallback();
+        RovinLandingDialogWidget landingWidget = ensureRovinLandingWidget();
+        landingWidget.bindLoading(BuildConfig.ROVIN_PRODUCT_TITLE, "Returning to immersive mode...");
+        landingWidget.show(UIWidget.REQUEST_FOCUS);
+
+        mPendingRovinWarmResumeFallback = () -> {
+            mPendingRovinWarmResumeFallback = null;
+            if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+                return;
+            }
+            if (mRovinLandingWidget == null) {
+                return;
+            }
+            Log.w(LOGTAG, "Rovin Runtime: Warm resume fallback timeout. reason=" + reason);
+            mRovinLandingWidget.bindReady(
+                    BuildConfig.ROVIN_PRODUCT_TITLE,
+                    "Resume took longer than expected. Press Play to retry.");
+            mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+        };
+        mHandler.postDelayed(mPendingRovinWarmResumeFallback, ROVIN_WARM_RESUME_FALLBACK_DELAY_MS);
+    }
+
+    private void cancelPendingRovinWarmResumeFallback() {
+        if (mPendingRovinWarmResumeFallback != null) {
+            mHandler.removeCallbacks(mPendingRovinWarmResumeFallback);
+            mPendingRovinWarmResumeFallback = null;
+        }
     }
 
     private void relaunchImmersiveMode() {
@@ -1065,6 +1118,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mRovinImmersiveActiveConfirmed = true;
         mRovinPendingNativeFocusStart = false;
         resetRovinStartupBridgeState();
+        cancelPendingRovinWarmResumeFallback();
+        if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+            mRovinLandingWidget.hide(REMOVE_WIDGET);
+            mRovinLandingWidget = null;
+        }
         stopRovinStartupPolling();
     }
 
@@ -1125,6 +1183,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinTransitionTriggered = false;
                 mRovinPendingNativeFocusStart = false;
                 resetRovinStartupBridgeState();
+                cancelPendingRovinWarmResumeFallback();
                 cancelPendingRovinAutoLaunch();
             }
             stopRovinStartupPolling();
@@ -1153,6 +1212,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
             resetRovinStartupBridgeState();
+            cancelPendingRovinWarmResumeFallback();
             cancelPendingRovinAutoLaunch();
 
             if (mWebXRInterstitial != null) {
@@ -1536,6 +1596,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private void showRovinLanding() {
         final RovinLaunchTarget target = resolveRovinLaunchTarget();
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         setPrimaryBrowserChromeVisible(false);
 
         if (mRovinLandingWidget == null) {
@@ -1570,6 +1631,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         if (!target.valid || StringUtils.isEmpty(target.url)) {
             showRovinLanding();
             return;
@@ -1587,6 +1649,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         final String recoveryUrl = getRecoveryBrowserUrl(target);
         if (StringUtils.isEmpty(recoveryUrl)) {
             showRovinLanding();

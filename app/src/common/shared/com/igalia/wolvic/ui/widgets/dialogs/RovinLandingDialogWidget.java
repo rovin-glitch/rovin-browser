@@ -65,6 +65,14 @@ public class RovinLandingDialogWidget extends PromptDialogWidget {
         setButtons(new String[] { BuildConfig.ROVIN_LANDING_PLAY_LABEL });
     }
 
+    public void bindLoading(@NonNull String gameTitle, @NonNull String description) {
+        mErrorState = false;
+        setTitle(R.string.rovin_landing_title);
+        setBody(getContext().getString(R.string.rovin_landing_body, gameTitle));
+        setDescription(description);
+        setButtons(new String[] {});
+    }
+
     public void bindError(@NonNull String gameTitle, @NonNull String message) {
         mErrorState = true;
         setTitle(R.string.rovin_landing_title);
