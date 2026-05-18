@@ -44,6 +44,7 @@
             android:name="${runtimeActivityName}"
             android:exported="true"
             android:targetActivity=".VRBrowserActivity">
+            <meta-data android:name="android.app.lib_name" android:value="native-lib" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
