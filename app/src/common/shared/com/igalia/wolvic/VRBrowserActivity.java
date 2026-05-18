@@ -156,6 +156,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private boolean mRovinTransitionTriggered = false;
     private boolean mRovinNativeVrFocused = false;
     private boolean mRovinPendingNativeFocusStart = false;
+    private Handler mRovinStartupBridgeHandler = null;
+    private Runnable mPendingRovinStartupBridge = null;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
     private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
     private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
@@ -167,6 +169,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
     private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
+    private static final long ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS = 2500L;
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
     private static final String ROVIN_APP_FOCUS_GAINED_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-gained'));})();";
@@ -902,6 +905,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinReady = false;
                 mRovinTransitionTriggered = false;
                 mRovinPendingNativeFocusStart = false;
+                resetRovinStartupBridgeState();
                 return;
             }
 
@@ -913,8 +917,68 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 return;
             }
 
-            triggerRovinStartOnFocusedWindow(focusedWindow, "ready");
+            scheduleRovinStartOnFocusedWindow(focusedWindow, "ready");
         });
+    }
+
+    private Handler getRovinStartupBridgeHandler() {
+        if (mRovinStartupBridgeHandler == null) {
+            mRovinStartupBridgeHandler = new Handler(Looper.getMainLooper());
+        }
+        return mRovinStartupBridgeHandler;
+    }
+
+    private void cancelPendingRovinStartupBridge() {
+        if (mRovinStartupBridgeHandler != null && mPendingRovinStartupBridge != null) {
+            mRovinStartupBridgeHandler.removeCallbacks(mPendingRovinStartupBridge);
+        }
+        mPendingRovinStartupBridge = null;
+    }
+
+    private void resetRovinStartupBridgeState() {
+        cancelPendingRovinStartupBridge();
+    }
+
+    private void scheduleRovinStartOnFocusedWindow(WindowWidget focusedWindow, @NonNull String reason) {
+        if (focusedWindow == null || focusedWindow.getSession() == null) {
+            Log.w(LOGTAG, "Rovin Runtime: Cannot schedule startup bridge; no focused session. reason=" + reason);
+            mRovinReady = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
+            return;
+        }
+        if (mRovinTransitionTriggered || mRovinImmersiveActiveConfirmed) {
+            Log.d(LOGTAG, "Rovin Runtime: Startup bridge already handled. reason=" + reason);
+            return;
+        }
+        if (!mRovinNativeVrFocused) {
+            Log.i(LOGTAG, "Rovin Runtime: Native VR focus unavailable; deferring startup bridge. reason=" + reason);
+            mRovinPendingNativeFocusStart = true;
+            return;
+        }
+
+        long delayMs = ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS;
+
+        cancelPendingRovinStartupBridge();
+        mRovinPendingNativeFocusStart = false;
+        mPendingRovinStartupBridge = () -> {
+            mPendingRovinStartupBridge = null;
+            if (!mRovinNativeVrFocused) {
+                Log.i(LOGTAG, "Rovin Runtime: Native VR focus lost before startup bridge fired.");
+                mRovinPendingNativeFocusStart = mRovinReady && !mRovinTransitionTriggered
+                        && !mRovinImmersiveActiveConfirmed;
+                return;
+            }
+            WindowWidget currentWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            triggerRovinStartOnFocusedWindow(currentWindow, reason + "-settled");
+        };
+
+        Log.i(LOGTAG, "Rovin Runtime: Scheduling JS startup bridge in " + delayMs
+                + "ms after native VR focus. reason=" + reason);
+        rovinLog("System: Native VR focus ready; starting WebXR after "
+                + delayMs + "ms settle.");
+        getRovinStartupBridgeHandler().postDelayed(mPendingRovinStartupBridge, delayMs);
     }
 
     private void triggerRovinStartOnFocusedWindow(WindowWidget focusedWindow, @NonNull String reason) {
@@ -923,6 +987,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinReady = false;
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
             return;
         }
         if (mRovinTransitionTriggered || mRovinImmersiveActiveConfirmed) {
@@ -930,12 +995,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
 
-            Log.i(LOGTAG, "Rovin Runtime: Handshake success. Calling JS startup bridge.");
-            mStartupPollingCount = 0;
-            mRovinPendingNativeFocusStart = false;
-            mRovinTransitionTriggered = true;
-            stopRovinStartupPolling();
-            focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
+        cancelPendingRovinStartupBridge();
+        Log.i(LOGTAG, "Rovin Runtime: Handshake success. Calling JS startup bridge.");
+        mStartupPollingCount = 0;
+        mRovinPendingNativeFocusStart = false;
+        mRovinTransitionTriggered = true;
+        stopRovinStartupPolling();
+        focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
     }
 
     public void rovinLog(String message) {
@@ -961,6 +1027,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinImmersiveActiveConfirmed = false;
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
             if (mStartupPollingHandler == null) {
                 mStartupPollingHandler = new Handler(Looper.getMainLooper());
             }
@@ -997,6 +1064,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         Log.i(LOGTAG, "Rovin Runtime: JS signaled Immersive Active. Killing all startup hooks.");
         mRovinImmersiveActiveConfirmed = true;
         mRovinPendingNativeFocusStart = false;
+        resetRovinStartupBridgeState();
         stopRovinStartupPolling();
     }
 
@@ -1043,7 +1111,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 rovinLog("System: Native readiness timed out; attempting JS startup bridge.");
                 if (mRovinNativeVrFocused) {
                     mRovinReady = true;
-                    triggerRovinStartOnFocusedWindow(focusedWindow, "readiness-timeout");
+                    scheduleRovinStartOnFocusedWindow(focusedWindow, "readiness-timeout");
                 } else {
                     Log.i(LOGTAG, "Rovin Runtime: Timeout reached before native VR focus; deferring JS startup bridge.");
                     rovinLog("System: Waiting for native VR focus before timeout fallback request.");
@@ -1056,6 +1124,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mRovinImmersiveActiveConfirmed = false;
                 mRovinTransitionTriggered = false;
                 mRovinPendingNativeFocusStart = false;
+                resetRovinStartupBridgeState();
                 cancelPendingRovinAutoLaunch();
             }
             stopRovinStartupPolling();
@@ -1083,6 +1152,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             mRovinImmersiveActiveConfirmed = false;
             mRovinTransitionTriggered = false;
             mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
             cancelPendingRovinAutoLaunch();
 
             if (mWebXRInterstitial != null) {
@@ -2372,6 +2442,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private void onAppFocusChanged(final boolean aIsFocused) {
         runOnUiThread(() -> {
             mRovinNativeVrFocused = aIsFocused;
+            if (!aIsFocused) {
+                cancelPendingRovinStartupBridge();
+                if (mRovinReady && !mRovinTransitionTriggered && !mRovinImmersiveActiveConfirmed) {
+                    mRovinPendingNativeFocusStart = true;
+                }
+            }
             Session session = SessionStore.get().getActiveSession();
             if (session == null || session.getCurrentUri() == null || session.getCurrentUri().isBlank()) {
                 return;
@@ -2379,9 +2455,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
             if (aIsFocused && mRovinPendingNativeFocusStart && mRovinReady
                     && !mRovinTransitionTriggered && !mRovinImmersiveActiveConfirmed) {
-                Log.i(LOGTAG, "Rovin Runtime: Native VR focus gained; triggering deferred JS startup bridge.");
+                Log.i(LOGTAG, "Rovin Runtime: Native VR focus gained; scheduling deferred JS startup bridge.");
                 WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
-                triggerRovinStartOnFocusedWindow(focusedWindow, "native-vr-focus");
+                scheduleRovinStartOnFocusedWindow(focusedWindow, "native-vr-focus");
             }
 
             if (!shouldForwardRovinFocusToPage()) {
