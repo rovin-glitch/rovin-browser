@@ -175,6 +175,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private static final long ROVIN_XR_START_RETRY_DELAY_MS = 5000L;
     private static final int ROVIN_XR_START_MAX_FAILURES = 8;
     private static final long ROVIN_WARM_RESUME_FALLBACK_DELAY_MS = 12000L;
+    private static final long[] ROVIN_INPUT_PRIME_DELAYS_MS = {0L, 250L, 1000L};
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
     private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
     private static final String ROVIN_APP_FOCUS_GAINED_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-gained'));})();";
@@ -815,6 +816,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         // if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
         // relaunchImmersiveMode();
         // }
+        primeRovinRuntimeControllerInput("activity-resume");
         resumeRovinImmersiveIfNeeded("activity-resume");
     }
 
@@ -2571,6 +2573,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 if (mRovinReady && !mRovinTransitionTriggered && !mRovinImmersiveActiveConfirmed) {
                     mRovinPendingNativeFocusStart = true;
                 }
+            } else {
+                primeRovinRuntimeControllerInput("native-focus-gained");
             }
             Session session = SessionStore.get().getActiveSession();
             if (session == null || session.getCurrentUri() == null || session.getCurrentUri().isBlank()) {
@@ -2623,12 +2627,37 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @SuppressWarnings("unused")
     private void setHandTrackingSupported(final boolean isSupported) {
         mIsHandTrackingSupported = isSupported;
+        primeRovinRuntimeControllerInput("hand-tracking-support");
     }
 
     @Keep
     @SuppressWarnings("unused")
     private void onControllersAvailable() {
         mAreControllersAvailable = true;
+        primeRovinRuntimeControllerInput("controllers-available");
+    }
+
+    private void primeRovinRuntimeControllerInput(@NonNull String reason) {
+        if (!BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED) {
+            return;
+        }
+
+        if (mIsHandTrackingEnabled) {
+            Log.i(LOGTAG, "Rovin Runtime: Disabling native hand tracking for controller-first input. reason=" + reason);
+            setHandTrackingEnabled(false);
+        }
+
+        for (long delayMs : ROVIN_INPUT_PRIME_DELAYS_MS) {
+            mHandler.postDelayed(() -> {
+                WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+                if (focusedWindow == null || !focusedWindow.isVisible()) {
+                    return;
+                }
+                Log.d(LOGTAG, "Rovin Runtime: Priming focused window input. reason=" + reason);
+                focusedWindow.requestFocus();
+                focusedWindow.requestFocusFromTouch();
+            }, delayMs);
+        }
     }
 
     private SurfaceTexture createSurfaceTexture() {
