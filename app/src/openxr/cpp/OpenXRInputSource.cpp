@@ -1,5 +1,6 @@
 #include "OpenXRInputSource.h"
 #include "OpenXRExtensions.h"
+#include <algorithm>
 #include <assert.h>
 #include <unordered_set>
 #include "DeviceUtils.h"
@@ -499,7 +500,7 @@ void OpenXRInputSource::UpdateHaptics(ControllerDelegate &delegate)
 
     // Duration should be expressed in nanoseconds.
     auto duration = (uint64_t) (pulseDuration * 1000000.0f);
-    pulseIntensity = std::max(pulseIntensity, 1.0f);
+    pulseIntensity = std::max(0.0f, std::min(pulseIntensity, 1.0f));
 
     CHECK_XRCMD(applyHapticFeedback(mHapticAction, duration, XR_FREQUENCY_UNSPECIFIED, pulseIntensity));
 }
