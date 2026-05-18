@@ -395,6 +395,10 @@ public class PromptDelegate implements
             Log.w(LOGTAG, "Ignoring malformed Rovin haptic values: " + payload, error);
         }
 
+        Log.i(LOGTAG, "Rovin Haptics: prompt pulse hand=" + parts[0]
+                + " controllerId=" + controllerId
+                + " durationMs=" + pulseDuration
+                + " intensity=" + pulseIntensity);
         activity.triggerHapticPulse(pulseDuration, pulseIntensity, controllerId);
         result.complete(textPrompt.confirm(""));
         return true;

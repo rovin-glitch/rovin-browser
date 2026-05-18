@@ -6,6 +6,7 @@
 #include "DeviceUtils.h"
 #include "SystemUtils.h"
 #include "DeviceDelegate.h"
+#include "vrb/Logger.h"
 
 #define HAND_JOINT_FOR_AIM XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT
 
@@ -232,7 +233,21 @@ XrResult OpenXRInputSource::applyHapticFeedback(XrAction action, XrDuration dura
     hapticVibration.frequency = frequency;
     hapticVibration.amplitude = amplitude;
 
-    RETURN_IF_XR_FAILED(xrApplyHapticFeedback(mSession, &hapticActionInfo, (const XrHapticBaseHeader*)&hapticVibration));
+    XrResult result = xrApplyHapticFeedback(mSession, &hapticActionInfo, (const XrHapticBaseHeader*)&hapticVibration);
+    if (XR_FAILED(result)) {
+        VRB_ERROR("Rovin Haptics: xrApplyHapticFeedback FAILED hand=%s durationNs=%lld frequency=%f amplitude=%f result=%s",
+                  mSubactionPathName.c_str(),
+                  (long long) duration,
+                  frequency,
+                  amplitude,
+                  to_string(result));
+        return result;
+    }
+    VRB_LOG("Rovin Haptics: xrApplyHapticFeedback OK hand=%s durationNs=%lld frequency=%f amplitude=%f",
+            mSubactionPathName.c_str(),
+            (long long) duration,
+            frequency,
+            amplitude);
 
     return XR_SUCCESS;
 }
@@ -501,6 +516,12 @@ void OpenXRInputSource::UpdateHaptics(ControllerDelegate &delegate)
     // Duration should be expressed in nanoseconds.
     auto duration = (uint64_t) (pulseDuration * 1000000.0f);
     pulseIntensity = std::max(0.0f, std::min(pulseIntensity, 1.0f));
+    VRB_LOG("Rovin Haptics: UpdateHaptics hand=%s controller=%d frameId=%llu durationMs=%f intensity=%f",
+            mSubactionPathName.c_str(),
+            mIndex,
+            (unsigned long long) frameId,
+            pulseDuration,
+            pulseIntensity);
 
     CHECK_XRCMD(applyHapticFeedback(mHapticAction, duration, XR_FREQUENCY_UNSPECIFIED, pulseIntensity));
 }
