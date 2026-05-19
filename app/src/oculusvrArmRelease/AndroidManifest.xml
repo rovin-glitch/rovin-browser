@@ -47,7 +47,7 @@
         tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules"
         >
         <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
-        <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro"/>
+        <meta-data android:name="com.oculus.supportedDevices" android:value="quest2|questpro|quest3|quest3s"/>
         <activity
             android:name=".VRBrowserActivity"
             android:launchMode="singleTask"
@@ -62,19 +62,16 @@
             android:exported="true">
             <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
             <meta-data android:name="android.app.lib_name" android:value="native-lib" />
-        </activity>
-
-        <activity-alias
-            android:name="${runtimeActivityName}"
-            android:exported="true"
-            android:targetActivity=".VRBrowserActivity">
-            <meta-data android:name="android.app.lib_name" android:value="native-lib" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.INFO" />
                 <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
-        </activity-alias>
+        </activity>
+
+        <activity-alias
+            android:name="${runtimeActivityName}"
+            tools:node="remove" />
     </application>
 </manifest>
