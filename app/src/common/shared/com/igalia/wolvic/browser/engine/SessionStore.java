@@ -106,9 +106,13 @@ public class SessionStore implements
             @Override
             public void onExcludedTrackingProtectionChange(@NonNull String url, boolean excluded, boolean isPrivate) {
                 mSessions.forEach(existingSession -> {
-                    String currentSessionHost = UrlUtils.getHost(existingSession.getCurrentUri());
+                    String currentUri = existingSession.getCurrentUri();
+                    if (currentUri == null || url == null) {
+                        return;
+                    }
+                    String currentSessionHost = UrlUtils.getHost(currentUri);
                     String sessionHost = UrlUtils.getHost(url);
-                    if (currentSessionHost.equals(sessionHost) && existingSession.isPrivateMode() == isPrivate) {
+                    if (currentSessionHost != null && currentSessionHost.equals(sessionHost) && existingSession.isPrivateMode() == isPrivate) {
                         existingSession.reload(WSession.LOAD_FLAGS_BYPASS_CACHE);
                     }
                 });
@@ -269,10 +273,7 @@ public class SessionStore implements
     }
 
     public void destroySession(Session aSession) {
-        mSessions.remove(aSession);
-        if (aSession != null) {
-            shutdownSession(aSession);
-        }
+        if (aSession != null && mSessions.remove(aSession)) { shutdownSession(aSession); }
     }
 
     public void destroySession(@NonNull String sessionId) {

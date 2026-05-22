@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tool="http://schemas.android.com/tools">
     <data>
+        <import type="com.igalia.wolvic.RovinProduct" />
         <import type="com.igalia.wolvic.ui.widgets.Windows.ContentType"/>
         <variable
             name="viewmodel"
@@ -14,6 +15,7 @@
 
     <RelativeLayout
         android:layout_width="@dimen/tray_width"
+        app:visibleGone="@{!RovinProduct.isRuntime()}"
         android:layout_height="@dimen/tray_height"
         android:gravity="center">
 

@@ -82,7 +82,10 @@ public class BindingAdapters {
         SpannableString spannableString = new SpannableString(text);
         drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
         ImageSpan span = new ImageSpan(drawable, ImageSpan.ALIGN_BOTTOM);
-        spannableString.setSpan(span, spannableString.toString().indexOf("@"),  spannableString.toString().indexOf("@")+1, Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+        int index = spannableString.toString().indexOf("@");
+        if (index != -1) {
+            spannableString.setSpan(span, index, index + 1, Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+        }
         textView.setText(spannableString);
     }
 

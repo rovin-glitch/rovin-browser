@@ -2,13 +2,18 @@ package com.igalia.wolvic.browser;
 
 import android.app.Application;
 import android.content.Context;
+import android.util.Log;
 import android.net.Uri;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.Observer;
 
 import com.igalia.wolvic.R;
+import com.igalia.wolvic.VRBrowserActivity;
+import com.igalia.wolvic.BuildConfig;
+import com.igalia.wolvic.RovinProduct;
 import com.igalia.wolvic.browser.api.WAllowOrDeny;
 import com.igalia.wolvic.browser.api.WAutocomplete;
 import com.igalia.wolvic.browser.api.WResult;
@@ -39,11 +44,20 @@ import com.igalia.wolvic.ui.widgets.settings.SettingsView;
 import com.igalia.wolvic.utils.StringUtils;
 import com.igalia.wolvic.utils.UrlUtils;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import android.util.Base64;
 import mozilla.components.concept.storage.Login;
 
 public class PromptDelegate implements
@@ -51,6 +65,16 @@ public class PromptDelegate implements
         WindowWidget.WindowListener,
         WSession.NavigationDelegate,
         WSession.ContentDelegate {
+    private static final String LOGTAG = "PromptDelegate";
+    private static final String ROVIN_HAPTIC_PROMPT_MESSAGE = "__rovin_haptic__";
+    private static final String ROVIN_SAVE_PROMPT_MESSAGE = "__rovin_save__";
+    private static final String ROVIN_READY_PROMPT_MESSAGE = "__rovin_ready__";
+    private static final String ROVIN_LOG_PROMPT_PREFIX = "__rovin_log__:";
+    private static final String ROVIN_SAVE_LOGS_PROMPT = "__rovin_save_logs__";
+    private static final String ROVIN_LOADED_PROMPT_MESSAGE = "__rovin_is_fully_loaded__";
+    private static final String ROVIN_IMMERSIVE_ACTIVE_MESSAGE = "__rovin_immersive_active__";
+    private static final String ROVIN_XR_START_FAILED_MESSAGE = "__rovin_xr_start_failed__";
+    private static final int ROVIN_SAVE_MAX_BYTES = 256 * 1024;
 
     private PromptWidget mPrompt;
     private ConfirmPromptWidget mSlowScriptPrompt;
@@ -204,6 +228,49 @@ public class PromptDelegate implements
     public WResult<PromptResponse> onTextPrompt(@NonNull WSession session, @NonNull TextPrompt textPrompt) {
         final WResult<PromptResponse> result = WResult.create();
 
+        if (handleRovinSavePrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinHapticPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinReadyPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinLogPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinSaveLogsPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinLoadedPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinImmersiveActivePrompt(textPrompt, result)) {
+            return result;
+        }
+
+        if (handleRovinXrStartFailedPrompt(textPrompt, result)) {
+            return result;
+        }
+
+        // ROVIN: Deadlock Safety Valve
+        // If the message starts with __rovin_ but wasn't handled by the specific handlers above,
+        // we must CONSUME it and return immediately. This prevents unhandled bridge messages
+        // from showing a hidden blocking native dialog that deadlocks the startup.
+        String message = textPrompt.message();
+        if (message != null && message.startsWith("__rovin_")) {
+            Log.w(LOGTAG, "Rovin Safety Valve: Consuming unhandled bridge message: " + message);
+            result.complete(textPrompt.confirm("ok"));
+            return result;
+        }
+
         mPrompt = new TextPromptWidget(mContext);
         mPrompt.getPlacement().parentHandle = mAttachedWindow.getHandle();
         mPrompt.getPlacement().parentAnchorY = 0.0f;
@@ -225,6 +292,299 @@ public class PromptDelegate implements
         mPrompt.show(UIWidget.REQUEST_FOCUS, true);
 
         return result;
+    }
+
+    private boolean handleRovinSavePrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_SAVE_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!RovinProduct.isRuntime() || !(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.confirm("error|not_runtime"));
+            return true;
+        }
+
+        final Session engineSession = mAttachedWindow != null ? mAttachedWindow.getSession() : null;
+        final String currentUri = engineSession != null ? engineSession.getCurrentUri() : null;
+        if (!isTrustedRovinSaveOrigin(currentUri)) {
+            Log.w(LOGTAG, "Blocked Rovin save prompt from untrusted origin. uri=" + currentUri);
+            result.complete(textPrompt.confirm("error|untrusted_origin"));
+            return true;
+        }
+
+        final String payload = textPrompt.defaultValue();
+        if (payload == null || payload.isBlank()) {
+            result.complete(textPrompt.confirm("error|missing_command"));
+            return true;
+        }
+
+        try {
+            if ("get".equals(payload)) {
+                result.complete(textPrompt.confirm(readRovinSaveJson()));
+                return true;
+            }
+            if ("clear".equals(payload)) {
+                clearRovinSave();
+                result.complete(textPrompt.confirm("ok"));
+                return true;
+            }
+            if (payload.startsWith("set|")) {
+                final String encoded = payload.substring(4);
+                final byte[] decoded = Base64.decode(encoded, Base64.NO_WRAP);
+                if (decoded.length > ROVIN_SAVE_MAX_BYTES) {
+                    result.complete(textPrompt.confirm("error|too_large"));
+                    return true;
+                }
+                final String json = new String(decoded, StandardCharsets.UTF_8);
+                validateJsonObject(json);
+                writeRovinSaveAtomic(decoded);
+                result.complete(textPrompt.confirm("ok"));
+                return true;
+            }
+
+            result.complete(textPrompt.confirm("error|unknown_command"));
+            return true;
+        } catch (IllegalArgumentException error) {
+            result.complete(textPrompt.confirm("error|invalid_base64"));
+            return true;
+        } catch (JSONException error) {
+            result.complete(textPrompt.confirm("error|invalid_json"));
+            return true;
+        } catch (IOException error) {
+            Log.e(LOGTAG, "Rovin save IO failed.", error);
+            result.complete(textPrompt.confirm("error|io"));
+            return true;
+        } catch (Exception error) {
+            Log.e(LOGTAG, "Rovin save handler failed.", error);
+            result.complete(textPrompt.confirm("error|unexpected"));
+            return true;
+        }
+    }
+
+    private boolean handleRovinHapticPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_HAPTIC_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+
+        final String payload = textPrompt.defaultValue();
+        if (payload == null || payload.isBlank()) {
+            result.complete(textPrompt.confirm(""));
+            return true;
+        }
+
+        final String[] parts = payload.split("\\|");
+        if (parts.length < 3) {
+            Log.w(LOGTAG, "Ignoring malformed Rovin haptic payload: " + payload);
+            result.complete(textPrompt.confirm(""));
+            return true;
+        }
+
+        final int controllerId = "right".equals(parts[0]) ? 0 : 1;
+        float pulseDuration = 50.0f;
+        float pulseIntensity = 0.5f;
+        try {
+            pulseDuration = Math.max(1.0f, Math.min(500.0f, Float.parseFloat(parts[1])));
+            pulseIntensity = Math.max(0.0f, Math.min(1.0f, Float.parseFloat(parts[2])));
+        } catch (NumberFormatException error) {
+            Log.w(LOGTAG, "Ignoring malformed Rovin haptic values: " + payload, error);
+        }
+
+        Log.i(LOGTAG, "Rovin Haptics: prompt pulse hand=" + parts[0]
+                + " controllerId=" + controllerId
+                + " durationMs=" + pulseDuration
+                + " intensity=" + pulseIntensity);
+        activity.triggerHapticPulse(pulseDuration, pulseIntensity, controllerId);
+        result.complete(textPrompt.confirm(""));
+        return true;
+    }
+
+    private boolean handleRovinReadyPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_READY_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        Log.i(LOGTAG, "PromptDelegate: __rovin_ready__ received. Signaling Activity.");
+        activity.signalReadyForVr();
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinLoadedPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_LOADED_PROMPT_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        String loadedStr = textPrompt.defaultValue();
+        boolean loaded = "true".equalsIgnoreCase(loadedStr);
+        
+        Log.d(LOGTAG, "PromptDelegate: __rovin_is_fully_loaded__ response: " + loadedStr);
+        activity.handleRovinLoadedResult(loaded);
+        
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinImmersiveActivePrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_IMMERSIVE_ACTIVE_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        Log.i(LOGTAG, "PromptDelegate: __rovin_immersive_active__ received! Signaling activity.");
+        activity.handleRovinImmersiveActive();
+        
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinXrStartFailedPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_XR_START_FAILED_MESSAGE.equals(textPrompt.message())) {
+            return false;
+        }
+
+        if (!(mContext instanceof VRBrowserActivity)) {
+            result.complete(textPrompt.dismiss());
+            return true;
+        }
+
+        VRBrowserActivity activity = (VRBrowserActivity) mContext;
+        String payload = textPrompt.defaultValue();
+        Log.w(LOGTAG, "PromptDelegate: __rovin_xr_start_failed__ received. payload=" + payload);
+        activity.handleRovinXrStartFailed(payload);
+
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean isTrustedRovinSaveOrigin(@Nullable String uri) {
+        if (StringUtils.isEmpty(uri)) {
+            return false;
+        }
+
+        // Allow bundled local content
+        if (uri.startsWith("file:///android_asset/")) {
+            return true;
+        }
+
+        final String host = UrlUtils.getHost(uri);
+        if (StringUtils.isEmpty(host)) {
+            // Only block if it's not a known local scheme we already handled above
+            if (!UrlUtils.isFileUri(uri)) {
+                Log.w(LOGTAG, "Rovin save: Blocked empty host for uri=" + uri);
+            }
+            return false;
+        }
+
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host)) {
+            return true;
+        }
+
+        if (!StringUtils.isEmpty(BuildConfig.ROVIN_FIXED_TARGET_URL)) {
+            final String fixedHost = UrlUtils.getHost(BuildConfig.ROVIN_FIXED_TARGET_URL);
+            if (!StringUtils.isEmpty(fixedHost) && fixedHost.equalsIgnoreCase(host)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @NonNull
+    private File getRovinSaveFile() {
+        final String subdir = StringUtils.isEmpty(BuildConfig.ROVIN_SAVE_SUBDIR) ? "rovin-save" : BuildConfig.ROVIN_SAVE_SUBDIR;
+        final String filename = StringUtils.isEmpty(BuildConfig.ROVIN_SAVE_FILENAME) ? "rovin-save.json" : BuildConfig.ROVIN_SAVE_FILENAME;
+        final File baseDir = new File(mContext.getFilesDir(), subdir);
+        return new File(baseDir, filename);
+    }
+
+    @NonNull
+    private String readRovinSaveJson() throws IOException {
+        final File saveFile = getRovinSaveFile();
+        if (!saveFile.exists()) {
+            return "";
+        }
+
+        final long length = saveFile.length();
+        if (length > ROVIN_SAVE_MAX_BYTES) {
+            return "error|too_large";
+        }
+
+        try (FileInputStream input = new FileInputStream(saveFile)) {
+            final byte[] bytes = new byte[(int) length];
+            int offset = 0;
+            while (offset < bytes.length) {
+                final int read = input.read(bytes, offset, bytes.length - offset);
+                if (read < 0) {
+                    break;
+                }
+                offset += read;
+            }
+            return new String(bytes, 0, offset, StandardCharsets.UTF_8);
+        }
+    }
+
+    private void validateJsonObject(@NonNull String json) throws JSONException {
+        new JSONObject(json);
+    }
+
+    private void writeRovinSaveAtomic(@NonNull byte[] jsonBytes) throws IOException {
+        final File saveFile = getRovinSaveFile();
+        final File dir = saveFile.getParentFile();
+        if (dir == null) {
+            throw new IOException("Missing save directory.");
+        }
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Failed to create save directory.");
+        }
+
+        final File tempFile = new File(dir, saveFile.getName() + ".tmp");
+        try (FileOutputStream output = new FileOutputStream(tempFile, false)) {
+            output.write(jsonBytes);
+            output.flush();
+            output.getFD().sync();
+        }
+
+        if (saveFile.exists() && !saveFile.delete()) {
+            throw new IOException("Failed to replace existing save file.");
+        }
+
+        if (!tempFile.renameTo(saveFile)) {
+            throw new IOException("Atomic rename failed.");
+        }
+    }
+
+    private void clearRovinSave() {
+        try {
+            final File saveFile = getRovinSaveFile();
+            if (saveFile.exists() && !saveFile.delete()) {
+                Log.w(LOGTAG, "Failed to delete save file: " + saveFile.getAbsolutePath());
+            }
+        } catch (Exception error) {
+            Log.w(LOGTAG, "Failed to clear save file.", error);
+        }
     }
 
     @Nullable
@@ -588,5 +948,33 @@ public class PromptDelegate implements
     public void onSessionChanged(@NonNull Session aOldSession, @NonNull Session aSession) {
         cleanSession(aOldSession);
         setUpSession(aSession);
+    }
+
+
+    private boolean handleRovinLogPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        String msg = textPrompt.message();
+        if (msg == null || !msg.startsWith(ROVIN_LOG_PROMPT_PREFIX)) {
+            return false;
+        }
+
+        Log.i("PromptDelegate", "RovinLog: " + msg);
+        if (mContext instanceof VRBrowserActivity) {
+            ((VRBrowserActivity) mContext).rovinLog("Web: " + msg.substring(ROVIN_LOG_PROMPT_PREFIX.length()));
+        }
+        result.complete(textPrompt.confirm("ok"));
+        return true;
+    }
+
+    private boolean handleRovinSaveLogsPrompt(@NonNull TextPrompt textPrompt, @NonNull WResult<PromptResponse> result) {
+        if (!ROVIN_SAVE_LOGS_PROMPT.equals(textPrompt.message())) {
+            return false;
+        }
+
+        Log.i("PromptDelegate", "RovinSaveLogs: detected");
+        if (mContext instanceof VRBrowserActivity) {
+            ((VRBrowserActivity) mContext).rovinLog("System: Save logs requested from Web.");
+        }
+        result.complete(textPrompt.confirm("ok"));
+        return true;
     }
 }

@@ -126,7 +126,8 @@ import java.util.concurrent.TimeUnit;
 import kotlinx.coroutines.CoroutineScope;
 
 public class VRBrowserActivity extends PlatformActivity implements WidgetManagerDelegate,
-        ComponentCallbacks2, LifecycleOwner, ViewModelStoreOwner, SharedPreferences.OnSharedPreferenceChangeListener, PlatformActivityPlugin.PlatformActivityPluginListener {
+        ComponentCallbacks2, LifecycleOwner, ViewModelStoreOwner, SharedPreferences.OnSharedPreferenceChangeListener,
+        PlatformActivityPlugin.PlatformActivityPluginListener {
 
     public static final String CUSTOM_URI_SCHEME = "wolvic";
     public static final String CUSTOM_URI_HOST = "com.igalia.wolvic";
@@ -140,15 +141,45 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public static final String EXTRA_HIDE_WHATS_NEW = "hide_whats_new";
     public static final String EXTRA_KIOSK = "kiosk";
     private static final String ROVIN_PAUSE_BRIDGE_QUERY_PARAM = "rovinPauseBridge";
+    private static final String ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM = "rovinNativeHaptics";
+    private static final String ROVIN_SAVE_BRIDGE_QUERY_PARAM = "rovinSaveBridge";
+    private static final String ROVIN_RUNTIME_QUERY_PARAM = "rovinRuntime";
+    private static final String ROVIN_RENDER_SCALE_QUERY_PARAM = "renderScale";
+    private static final String ROVIN_RENDER_SCALE_DEFAULT = "1.3";
     private static final long BATTERY_UPDATE_INTERVAL = 60 * 1_000_000_000L; // 60 seconds
 
     private boolean mLaunchImmersive = false;
+    private boolean mRovinReady = false;
+    private boolean mHasAttemptedInitialRelaunch = false;
+    private boolean mIsLaunchingVr = false;
+    private boolean mRovinImmersiveActiveConfirmed = false;
+    private boolean mRovinTransitionTriggered = false;
+    private boolean mRovinNativeVrFocused = false;
+    private boolean mRovinPendingNativeFocusStart = false;
+    private int mRovinXrStartFailureCount = 0;
+    private Handler mRovinStartupBridgeHandler = null;
+    private Runnable mPendingRovinStartupBridge = null;
+    private Runnable mPendingRovinWarmResumeFallback = null;
     public static final String EXTRA_LAUNCH_IMMERSIVE = "launch_immersive";
+    private static final int ROVIN_STARTUP_POLLING_INTERVAL_MS = 1000;
+    private static final int ROVIN_STARTUP_MAX_ATTEMPTS = 10;
+    private static final String ROVIN_READY_TITLE_MARKER = "__rovin_ready__";
+    private static final String ROVIN_POLL_LOADED_JS = "javascript:void(function(){var loaded=window.__rovin_is_fully_loaded__===true;var stage=window.__rovin_boot_stage__||'unset';var error=window.__rovin_boot_error__||'';window.prompt('__rovin_is_fully_loaded__',loaded?'true':('false|'+stage+(error?'|'+error:'')));}())";
+    private static final String ROVIN_TRIGGER_START_JS = "javascript:void(function(){if(window.triggerStartCta){window.triggerStartCta('native-cold-boot');}else{window.prompt('__rovin_log__:Native trigger failed: triggerStartCta missing','ok');}}())";
+    private static final String ROVIN_TRIGGER_RESUME_JS = "javascript:void(function(){if(window.rovin_auto_resume){window.rovin_auto_resume('native-warm-resume');}else if(window.triggerStartCta){window.triggerStartCta('native-warm-resume');}else{window.prompt('__rovin_log__:Native warm resume failed: startup bridge missing','ok');}}())";
     // Element where a click would be simulated to launch the WebXR experience.
     public static final String EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH = "launch_immersive_parent_xpath";
     public static final String EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH = "launch_immersive_element_xpath";
-    private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 1800L;
+    private static final long ROVIN_AUTO_LAUNCH_DELAY_MS = 200L;
+    private static final long ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS = 2500L;
+    private static final long ROVIN_XR_START_RETRY_DELAY_MS = 5000L;
+    private static final int ROVIN_XR_START_MAX_FAILURES = 8;
+    private static final long ROVIN_WARM_RESUME_FALLBACK_DELAY_MS = 12000L;
+    private static final long[] ROVIN_INPUT_PRIME_DELAYS_MS = {0L, 250L, 1000L};
     private static final String ROVIN_APP_BUTTON_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-button'));})();";
+    private static final String ROVIN_APP_FOCUS_LOST_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-lost'));})();";
+    private static final String ROVIN_APP_FOCUS_GAINED_JS = "javascript:(function(){window.dispatchEvent(new CustomEvent('rovin-app-focus-gained'));})();";
+
     private static class RovinLaunchTarget {
         final String url;
         final String statusMessage;
@@ -156,7 +187,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         final boolean bundledAvailable;
         final boolean valid;
 
-        private RovinLaunchTarget(String url, String statusMessage, boolean bundledPreferred, boolean bundledAvailable, boolean valid) {
+        private RovinLaunchTarget(String url, String statusMessage, boolean bundledPreferred, boolean bundledAvailable,
+                boolean valid) {
             this.url = url;
             this.statusMessage = statusMessage;
             this.bundledPreferred = bundledPreferred;
@@ -164,7 +196,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             this.valid = valid;
         }
 
-        static RovinLaunchTarget ready(String url, String statusMessage, boolean bundledPreferred, boolean bundledAvailable) {
+        static RovinLaunchTarget ready(String url, String statusMessage, boolean bundledPreferred,
+                boolean bundledAvailable) {
             return new RovinLaunchTarget(url, statusMessage, bundledPreferred, bundledAvailable, true);
         }
 
@@ -178,7 +211,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private BroadcastReceiver mCrashReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if((intent.getAction() != null) && intent.getAction().equals(CrashReporterService.CRASH_ACTION)) {
+            if ((intent.getAction() != null) && intent.getAction().equals(CrashReporterService.CRASH_ACTION)) {
                 Intent crashIntent;
                 if (Build.VERSION.SDK_INT > Build.VERSION_CODES.S_V2) {
                     crashIntent = intent.getParcelableExtra(CrashReporterService.DATA_TAG, Intent.class);
@@ -227,6 +260,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     class SwipeRunnable implements Runnable {
         boolean mCanceled = false;
+
         @Override
         public void run() {
             if (!mCanceled) {
@@ -243,17 +277,19 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     static final int NoGesture = -1;
     static final int GestureSwipeLeft = 0;
     static final int GestureSwipeRight = 1;
+    private int mLastGesture = NoGesture;
+
+    private int mProbeAttempts = 0;
     static final int SwipeDelay = 1000; // milliseconds
     static final long RESET_CRASH_COUNT_DELAY = 5000;
     static final int UPDATE_NATIVE_WIDGETS_DELAY = 50; // milliseconds
 
-    static final String LOGTAG = SystemUtils.createLogtag(VRBrowserActivity.class);
+    static final String LOGTAG = "VRB"; // Forced to VRB for release visibility
     ConcurrentHashMap<Integer, Widget> mWidgets;
     private int mWidgetHandleIndex = 1;
     AudioEngine mAudioEngine;
     OffscreenDisplay mOffscreenDisplay;
     FrameLayout mWidgetContainer;
-    int mLastGesture;
     SwipeRunnable mLastRunnable;
     Handler mHandler = new Handler(Looper.getMainLooper());
     Runnable mAudioUpdateRunnable;
@@ -275,6 +311,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     LinkedList<WebXRListener> mWebXRListeners;
     LinkedList<Runnable> mBackHandlers;
     private final MutableLiveData<Boolean> mIsPresentingImmersive = new MutableLiveData<>(false);
+    private boolean mIsBackgrounding = false;
     private Thread mUiThread;
     private LinkedList<Pair<Object, Float>> mBrightnessQueue;
     private Pair<Object, Float> mCurrentBrightness;
@@ -307,6 +344,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     private LinkedList<CheckCompositionLayersCallback> mCompositionLayersPendingCallbacks;
     private Runnable mPendingRovinAutoLaunch;
     private RovinAssetHttpServer mRovinAssetHttpServer;
+    private Handler mStartupPollingHandler;
+    private Runnable mStartupPollingRunnable;
+    private int mStartupPollingCount = 0;
 
     private ViewTreeObserver.OnGlobalFocusChangeListener globalFocusListener = new ViewTreeObserver.OnGlobalFocusChangeListener() {
         @Override
@@ -314,7 +354,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             Log.d(LOGTAG, "======> OnGlobalFocusChangeListener: old(" + oldFocus + ") new(" + newFocus + ")");
             // TODO: Which controller should we send the haptic feedback to ?
             triggerHapticFeedback(0);
-            for (FocusChangeListener listener: mFocusChangeListeners) {
+            for (FocusChangeListener listener : mFocusChangeListeners) {
                 listener.onGlobalFocusChanged(oldFocus, newFocus);
             }
         }
@@ -328,12 +368,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        mFragmentController = FragmentController.createController(new FragmentControllerCallbacks(this, new Handler(Looper.getMainLooper()), 0));
+        mFragmentController = FragmentController
+                .createController(new FragmentControllerCallbacks(this, new Handler(Looper.getMainLooper()), 0));
         mFragmentController.attachHost(null);
         mFragmentController.dispatchActivityCreated();
 
         SettingsStore.getInstance(getBaseContext()).setPid(Process.myPid());
-        ((VRBrowserApplication)getApplication()).onActivityCreate(this);
+        ((VRBrowserApplication) getApplication()).onActivityCreate(this);
 
         if (!DeviceType.isHVRBuild() && SettingsStore.getInstance(getBaseContext()).isTelemetryEnabled()) {
             TelemetryService.setService(new OpenTelemetry(getApplication()));
@@ -349,7 +390,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
         SettingsStore.getInstance(getBaseContext()).incrementCrashRestartCount();
-        mHandler.postDelayed(() -> SettingsStore.getInstance(getBaseContext()).resetCrashRestartCount(), RESET_CRASH_COUNT_DELAY);
+        mHandler.postDelayed(() -> SettingsStore.getInstance(getBaseContext()).resetCrashRestartCount(),
+                RESET_CRASH_COUNT_DELAY);
         // Set a global exception handler as soon as possible
         GlobalExceptionHandler.register(this.getApplicationContext());
 
@@ -361,17 +403,22 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         BitmapCache.getInstance(this).onCreate();
 
         WRuntime runtime = EngineProvider.INSTANCE.getOrCreateRuntime(this);
-        runtime.appendAppNotesToCrashReport("Wolvic " + BuildConfig.VERSION_NAME + "-" + BuildConfig.VERSION_CODE + "-" + BuildConfig.FLAVOR + "-" + BuildConfig.BUILD_TYPE + " (" + BuildConfig.GIT_HASH + ")");
+        runtime.appendAppNotesToCrashReport("Wolvic " + BuildConfig.VERSION_NAME + "-" + BuildConfig.VERSION_CODE + "-"
+                + BuildConfig.FLAVOR + "-" + BuildConfig.BUILD_TYPE + " (" + BuildConfig.GIT_HASH + ")");
 
         // Create broadcast receiver for getting crash messages from crash process
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(CrashReporterService.CRASH_ACTION);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            registerReceiver(mCrashReceiver, intentFilter, BuildConfig.APPLICATION_ID + "." + getString(R.string.app_permission_name), null, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(mCrashReceiver, intentFilter,
+                    BuildConfig.APPLICATION_ID + "." + getString(R.string.app_permission_name), null,
+                    Context.RECEIVER_NOT_EXPORTED);
         } else {
-            registerReceiver(mCrashReceiver, intentFilter, BuildConfig.APPLICATION_ID + "." + getString(R.string.app_permission_name), null);
+            registerReceiver(mCrashReceiver, intentFilter,
+                    BuildConfig.APPLICATION_ID + "." + getString(R.string.app_permission_name), null);
         }
 
+        mLaunchImmersive = false;
         mLastGesture = NoGesture;
         mWidgetUpdateListeners = new LinkedList<>();
         mPermissionListeners = new LinkedList<>();
@@ -406,6 +453,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         mSettings = SettingsStore.getInstance(this);
         mSettings.initModel(this);
+        mSettings.setEnvironmentOverrideEnabled(false);
         mSettings.setEnvironment(SettingsStore.ENV_DEFAULT);
         mSettings.setTermsServiceAccepted(true);
         mSettings.setPrivacyPolicyAccepted(true);
@@ -442,13 +490,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         mPoorPerformanceAllowList = new HashSet<>();
 
-        // FIXME: We don't have any crash report analysis tool, so we need to disable this for the time being.
+        // FIXME: We don't have any crash report analysis tool, so we need to disable
+        // this for the time being.
         if (false)
             checkForCrash();
 
         setLockMode(mSettings.isHeadLockEnabled() ? WidgetManagerDelegate.HEAD_LOCK : WidgetManagerDelegate.NO_LOCK);
         if (mSettings.getPointerMode() == WidgetManagerDelegate.TRACKED_EYE)
-            checkEyeTrackingPermissions(aPermissionGranted -> setPointerMode(aPermissionGranted ? WidgetManagerDelegate.TRACKED_EYE : WidgetManagerDelegate.TRACKED_POINTER));
+            checkEyeTrackingPermissions(aPermissionGranted -> setPointerMode(
+                    aPermissionGranted ? WidgetManagerDelegate.TRACKED_EYE : WidgetManagerDelegate.TRACKED_POINTER));
         else
             setPointerMode(mSettings.getPointerMode());
 
@@ -468,7 +518,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         // Empty widget just for handling focus on empty space
         mRootWidget = new RootWidget(this);
         mRootWidget.setClickCallback(() -> {
-            for (WorldClickListener listener: mWorldClickListeners) {
+            for (WorldClickListener listener : mWorldClickListeners) {
                 listener.onWorldClick();
             }
         });
@@ -487,11 +537,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mWindows = new Windows(this);
         mWindows.setDelegate(new Windows.Delegate() {
             @Override
-            public void onFocusedWindowChanged(@NonNull WindowWidget aFocusedWindow, @Nullable WindowWidget aPrevFocusedWindow) {
+            public void onFocusedWindowChanged(@NonNull WindowWidget aFocusedWindow,
+                    @Nullable WindowWidget aPrevFocusedWindow) {
                 attachToWindow(aFocusedWindow, aPrevFocusedWindow);
                 mTray.setAddWindowVisible(mWindows.canOpenNewWindow());
                 mNavigationBar.hideAllNotifications();
             }
+
             @Override
             public void onWindowBorderChanged(@NonNull WindowWidget aChangeWindow) {
                 mKeyboard.proxifyLayerIfNeeded(mWindows.getCurrentWindows());
@@ -512,8 +564,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
             @Override
             public void onWindowVideoAvailabilityChanged(@NonNull WindowWidget aWindow) {
-                @CPULevelFlags int cpuLevel = mWindows.isVideoAvailable() ? WidgetManagerDelegate.CPU_LEVEL_HIGH :
-                        WidgetManagerDelegate.CPU_LEVEL_NORMAL;
+                @CPULevelFlags
+                int cpuLevel = mWindows.isVideoAvailable() ? WidgetManagerDelegate.CPU_LEVEL_HIGH
+                        : WidgetManagerDelegate.CPU_LEVEL_NORMAL;
 
                 queueRunnable(() -> setCPULevelNative(cpuLevel));
 
@@ -608,8 +661,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return false;
         }
 
-        LegalDocumentDialogWidget termsServiceDialog =
-                new LegalDocumentDialogWidget(this, LegalDocumentDialogWidget.LegalDocument.TERMS_OF_SERVICE);
+        LegalDocumentDialogWidget termsServiceDialog = new LegalDocumentDialogWidget(this,
+                LegalDocumentDialogWidget.LegalDocument.TERMS_OF_SERVICE);
 
         termsServiceDialog.setDelegate(response -> {
             if (response) {
@@ -618,7 +671,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     showWhatsNewDialogIfNeeded();
                 }
             } else {
-                // TODO ask for confirmation ("are you really sure that you want to close Wolvic?")
+                // TODO ask for confirmation ("are you really sure that you want to close
+                // Wolvic?")
                 Log.w(LOGTAG, "The user rejected the privacy policy, closing the app.");
                 finish();
             }
@@ -634,14 +688,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return false;
         }
 
-        LegalDocumentDialogWidget privacyPolicyDialog
-                = new LegalDocumentDialogWidget(this, LegalDocumentDialogWidget.LegalDocument.PRIVACY_POLICY);
+        LegalDocumentDialogWidget privacyPolicyDialog = new LegalDocumentDialogWidget(this,
+                LegalDocumentDialogWidget.LegalDocument.PRIVACY_POLICY);
         privacyPolicyDialog.setDelegate(response -> {
             if (response) {
                 SettingsStore.getInstance(this).setPrivacyPolicyAccepted(true);
                 showWhatsNewDialogIfNeeded();
             } else {
-                // TODO ask for confirmation ("are you really sure that you want to close Wolvic?")
+                // TODO ask for confirmation ("are you really sure that you want to close
+                // Wolvic?")
                 Log.w(LOGTAG, "The user rejected the privacy policy, closing the app.");
                 finish();
             }
@@ -653,8 +708,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void showWhatsNewDialogIfNeeded() {
         if (!RovinProduct.shouldShowWhatsNew()
-            || SettingsStore.getInstance(this).isWhatsNewDisplayed() || mWindows.getFocusedWindow().isKioskMode()
-            || BuildConfig.FLAVOR_backend.equals("chromium")) {
+                || SettingsStore.getInstance(this).isWhatsNewDisplayed() || mWindows.getFocusedWindow().isKioskMode()
+                || BuildConfig.FLAVOR_backend.equals("chromium")) {
             return;
         }
 
@@ -703,18 +758,17 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     protected void onPause() {
+        mIsBackgrounding = true;
+        Log.i("VRB", "RovinProduct: onPause lifecycle reordered");
+        mWindows.onPause();
         if (mIsPresentingImmersive.getValue()) {
-            // This needs to be sync to ensure that WebVR is correctly paused.
-            // Also prevents a deadlock in onDestroy when the BrowserWidget is released.
             exitImmersiveSync();
+            mIsPresentingImmersive.setValue(false);
         }
-
         mAudioEngine.pauseEngine();
         mFragmentController.dispatchPause();
 
-        mWindows.onPause();
-
-        for (Widget widget: mWidgets.values()) {
+        for (Widget widget : mWidgets.values()) {
             widget.onPause();
         }
         // Reset so the dialog will show again on resume.
@@ -729,6 +783,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     protected void onResume() {
+        mIsBackgrounding = false;
         UISurfaceTextureRenderer.setRenderActive(true);
         MotionEventGenerator.clearDevices();
         mWidgetContainer.getViewTreeObserver().addOnGlobalFocusChangeListener(globalFocusListener);
@@ -740,23 +795,551 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mWindows.onResume();
 
         mAudioEngine.resumeEngine();
-        for (Widget widget: mWidgets.values()) {
+        for (Widget widget : mWidgets.values()) {
             widget.onResume();
         }
 
-        // If we're signed-in, poll for any new device events (e.g. received tabs) on activity resume.
-        // There's no push support right now, so this helps with the perception of speedy tab delivery.
-        ((VRBrowserApplication)getApplicationContext()).getAccounts().refreshDevicesAsync();
-        ((VRBrowserApplication)getApplicationContext()).getAccounts().pollForEventsAsync();
+        // If we're signed-in, poll for any new device events (e.g. received tabs) on
+        // activity resume.
+        // There's no push support right now, so this helps with the perception of
+        // speedy tab delivery.
+        ((VRBrowserApplication) getApplicationContext()).getAccounts().refreshDevicesAsync();
+        ((VRBrowserApplication) getApplicationContext()).getAccounts().pollForEventsAsync();
 
         super.onResume();
-        ((VRBrowserApplication)getApplication()).setCurrentActivity(this);
+        ((VRBrowserApplication) getApplication()).setCurrentActivity(this);
         getLifecycleRegistry().setCurrentState(Lifecycle.State.RESUMED);
+
+        // The native auto-resume is now disabled to prevent collisions with the Rovin
+        // Product's
+        // internal initialization. We rely on the unified JS handshake instead.
+        // if (isLaunchImmersive() && !mIsPresentingImmersive.getValue()) {
+        // relaunchImmersiveMode();
+        // }
+        primeRovinRuntimeControllerInput("activity-resume");
+        resumeRovinImmersiveIfNeeded("activity-resume");
     }
 
+    private boolean shouldPreserveRovinWarmIntent() {
+        return !isFinishing() && (mLaunchImmersive || mRovinImmersiveActiveConfirmed
+                || (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())));
+    }
+
+    private void resumeRovinImmersiveIfNeeded(@NonNull final String reason) {
+        if (!shouldPreserveRovinWarmIntent()) {
+            return;
+        }
+        if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+            Log.i(LOGTAG, "Rovin Runtime: Warm resume skipped; immersive is already presenting. reason=" + reason);
+            return;
+        }
+
+        runOnUiThread(() -> {
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: Warm resume requested but no focused session is available. reason=" + reason);
+                return;
+            }
+
+            Log.i(LOGTAG, "Rovin Runtime: Warm resume preserving existing page. reason=" + reason);
+            stopRovinStartupPolling();
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+            showRovinWarmResumeLoading(reason);
+            mRovinReady = true;
+            mRovinTransitionTriggered = true;
+            mIsLaunchingVr = true;
+            focusedWindow.getSession().loadUri(ROVIN_TRIGGER_RESUME_JS);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> mIsLaunchingVr = false, 5000);
+        });
+    }
+
+    private RovinLandingDialogWidget ensureRovinLandingWidget() {
+        if (mRovinLandingWidget == null) {
+            mRovinLandingWidget = new RovinLandingDialogWidget(this);
+            mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
+                @Override
+                public void onPlayRequested() {
+                    launchRovinExperience(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRecoveryBrowserRequested() {
+                    openRecoveryBrowser(resolveRovinLaunchTarget());
+                }
+
+                @Override
+                public void onRetryRequested() {
+                    showRovinLanding();
+                }
+            });
+        }
+        return mRovinLandingWidget;
+    }
+
+    private void showRovinWarmResumeLoading(@NonNull final String reason) {
+        cancelPendingRovinWarmResumeFallback();
+        RovinLandingDialogWidget landingWidget = ensureRovinLandingWidget();
+        landingWidget.bindLoading(BuildConfig.ROVIN_PRODUCT_TITLE, "Returning to immersive mode...");
+        landingWidget.show(UIWidget.REQUEST_FOCUS);
+
+        mPendingRovinWarmResumeFallback = () -> {
+            mPendingRovinWarmResumeFallback = null;
+            if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+                return;
+            }
+            if (mRovinLandingWidget == null) {
+                return;
+            }
+            Log.w(LOGTAG, "Rovin Runtime: Warm resume fallback timeout. reason=" + reason);
+            mRovinLandingWidget.bindReady(
+                    BuildConfig.ROVIN_PRODUCT_TITLE,
+                    "Resume took longer than expected. Press Play to retry.");
+            mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+        };
+        mHandler.postDelayed(mPendingRovinWarmResumeFallback, ROVIN_WARM_RESUME_FALLBACK_DELAY_MS);
+    }
+
+    private void cancelPendingRovinWarmResumeFallback() {
+        if (mPendingRovinWarmResumeFallback != null) {
+            mHandler.removeCallbacks(mPendingRovinWarmResumeFallback);
+            mPendingRovinWarmResumeFallback = null;
+        }
+    }
+
+    private void relaunchImmersiveMode() {
+        if (mIsLaunchingVr || mRovinImmersiveActiveConfirmed || mRovinTransitionTriggered) {
+            return;
+        }
+
+        if (mWindows == null || mWindows.getFocusedWindow() == null
+                || mWindows.getFocusedWindow().getSession() == null) {
+            return;
+        }
+
+        String currentUriStr = mWindows.getFocusedWindow().getSession().getCurrentUri();
+        if (currentUriStr != null && currentUriStr.contains("immersiveTargetElementXPath=")) {
+            Log.i(LOGTAG, "Rovin Runtime: Immersive parameters already present in URL. Awaiting auto-click.");
+            mRovinTransitionTriggered = true;
+            return;
+        }
+
+        // ROVIN: Use Native Authority for the VR transition.
+        mRovinTransitionTriggered = true;
+        mIsLaunchingVr = true;
+        runOnUiThread(() -> {
+            Uri targetUri = getIntent().getData();
+            if (targetUri == null) {
+                targetUri = Uri.parse(currentUriStr);
+            }
+
+            Log.i(LOGTAG, "Rovin Runtime: Triggering NATIVE immersive launch (One-Shot)");
+            mWindows.openInImmersiveMode(targetUri, mImmersiveParentElementXPath, mImmersiveTargetElementXPath);
+
+            // Cooldown to prevent multiple simultaneous launch attempts
+            new Handler(Looper.getMainLooper()).postDelayed(() -> mIsLaunchingVr = false, 5000);
+        });
+    }
+
+    public void signalReadyForVr() {
+        runOnUiThread(() -> {
+            if (mRovinReady) {
+                Log.d(LOGTAG, "Rovin Runtime: signalReadyForVr called but mRovinReady is already true. Ignoring.");
+                return;
+            }
+            mRovinReady = true;
+            Log.i(LOGTAG, "Rovin Runtime: Received READY signal. Handshake complete.");
+
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.hide(REMOVE_WIDGET);
+            }
+
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: READY received but no focused session is available.");
+                mRovinReady = false;
+                mRovinTransitionTriggered = false;
+                mRovinPendingNativeFocusStart = false;
+                resetRovinStartupBridgeState();
+                return;
+            }
+
+            if (!mRovinNativeVrFocused) {
+                Log.i(LOGTAG, "Rovin Runtime: READY received before native VR focus; deferring JS startup bridge.");
+                rovinLog("System: Waiting for native VR focus before WebXR request.");
+                mRovinPendingNativeFocusStart = true;
+                stopRovinStartupPolling();
+                return;
+            }
+
+            scheduleRovinStartOnFocusedWindow(focusedWindow, "ready");
+        });
+    }
+
+    private Handler getRovinStartupBridgeHandler() {
+        if (mRovinStartupBridgeHandler == null) {
+            mRovinStartupBridgeHandler = new Handler(Looper.getMainLooper());
+        }
+        return mRovinStartupBridgeHandler;
+    }
+
+    private void cancelPendingRovinStartupBridge() {
+        if (mRovinStartupBridgeHandler != null && mPendingRovinStartupBridge != null) {
+            mRovinStartupBridgeHandler.removeCallbacks(mPendingRovinStartupBridge);
+        }
+        mPendingRovinStartupBridge = null;
+    }
+
+    private void resetRovinStartupBridgeState() {
+        cancelPendingRovinStartupBridge();
+    }
+
+    private void scheduleRovinStartOnFocusedWindow(WindowWidget focusedWindow, @NonNull String reason) {
+        if (focusedWindow == null || focusedWindow.getSession() == null) {
+            Log.w(LOGTAG, "Rovin Runtime: Cannot schedule startup bridge; no focused session. reason=" + reason);
+            mRovinReady = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
+            return;
+        }
+        if (mRovinTransitionTriggered || mRovinImmersiveActiveConfirmed) {
+            Log.d(LOGTAG, "Rovin Runtime: Startup bridge already handled. reason=" + reason);
+            return;
+        }
+        if (!mRovinNativeVrFocused) {
+            Log.i(LOGTAG, "Rovin Runtime: Native VR focus unavailable; deferring startup bridge. reason=" + reason);
+            mRovinPendingNativeFocusStart = true;
+            return;
+        }
+
+        long delayMs = ROVIN_NATIVE_FOCUS_START_SETTLE_DELAY_MS;
+
+        cancelPendingRovinStartupBridge();
+        mRovinPendingNativeFocusStart = false;
+        mPendingRovinStartupBridge = () -> {
+            mPendingRovinStartupBridge = null;
+            if (!mRovinNativeVrFocused) {
+                Log.i(LOGTAG, "Rovin Runtime: Native VR focus lost before startup bridge fired.");
+                mRovinPendingNativeFocusStart = mRovinReady && !mRovinTransitionTriggered
+                        && !mRovinImmersiveActiveConfirmed;
+                return;
+            }
+            WindowWidget currentWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            triggerRovinStartOnFocusedWindow(currentWindow, reason + "-settled");
+        };
+
+        Log.i(LOGTAG, "Rovin Runtime: Scheduling JS startup bridge in " + delayMs
+                + "ms after native VR focus. reason=" + reason);
+        rovinLog("System: Native VR focus ready; starting WebXR after "
+                + delayMs + "ms settle.");
+        getRovinStartupBridgeHandler().postDelayed(mPendingRovinStartupBridge, delayMs);
+    }
+
+    private void triggerRovinStartOnFocusedWindow(WindowWidget focusedWindow, @NonNull String reason) {
+        if (focusedWindow == null || focusedWindow.getSession() == null) {
+            Log.w(LOGTAG, "Rovin Runtime: Cannot trigger startup bridge; no focused session. reason=" + reason);
+            mRovinReady = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = false;
+            resetRovinStartupBridgeState();
+            return;
+        }
+        if (mRovinTransitionTriggered || mRovinImmersiveActiveConfirmed) {
+            Log.d(LOGTAG, "Rovin Runtime: Startup bridge already handled. reason=" + reason);
+            return;
+        }
+
+        cancelPendingRovinStartupBridge();
+        Log.i(LOGTAG, "Rovin Runtime: Handshake success. Calling JS startup bridge.");
+        mStartupPollingCount = 0;
+        mRovinPendingNativeFocusStart = false;
+        mRovinTransitionTriggered = true;
+        stopRovinStartupPolling();
+        focusedWindow.getSession().loadUri(ROVIN_TRIGGER_START_JS);
+    }
+
+    public void rovinLog(String message) {
+        String logLine = "[" + new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()) + "] " + message;
+        Log.i(LOGTAG, "Rovin Console: " + logLine);
+        runOnUiThread(() -> {
+            if (mRovinLandingWidget != null) {
+                mRovinLandingWidget.appendLog(logLine);
+            }
+            if (mWebXRInterstitial != null) {
+                mWebXRInterstitial.appendLog(logLine);
+            }
+        });
+    }
+
+    public void startRovinStartupPolling() {
+        Log.i(LOGTAG, "Rovin Runtime: startRovinStartupPolling() called.");
+        runOnUiThread(() -> {
+            Log.i(LOGTAG, "Rovin Runtime: Starting native-led readiness polling...");
+            mStartupPollingCount = 0;
+            mRovinReady = false;
+            mIsLaunchingVr = false;
+            mRovinImmersiveActiveConfirmed = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = false;
+            mRovinXrStartFailureCount = 0;
+            resetRovinStartupBridgeState();
+            if (mStartupPollingHandler == null) {
+                mStartupPollingHandler = new Handler(Looper.getMainLooper());
+            }
+            if (mStartupPollingRunnable == null) {
+                mStartupPollingRunnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        pollRovinLoadedStatus();
+                    }
+                };
+            }
+            mStartupPollingHandler.removeCallbacks(mStartupPollingRunnable);
+            mStartupPollingHandler.postDelayed(mStartupPollingRunnable, ROVIN_STARTUP_POLLING_INTERVAL_MS);
+        });
+    }
+
+
+    private void saveRovinLogs() {
+        try {
+            java.io.File path = android.os.Environment
+                    .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+            java.io.File file = new java.io.File(path, "NeonChuck_Startup_Log.txt");
+            java.io.FileWriter writer = new java.io.FileWriter(file, true);
+            writer.write("--- LOG DUMP: " + new java.util.Date().toString() + " ---\n");
+            writer.write("Startup sequence initiated.\n");
+            writer.close();
+            rovinLog("System: Logs saved to Downloads/NeonChuck_Startup_Log.txt");
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Failed to save logs", e);
+        }
+    }
+
+    public void handleRovinImmersiveActive() {
+        Log.i(LOGTAG, "Rovin Runtime: JS signaled Immersive Active. Killing all startup hooks.");
+        mRovinImmersiveActiveConfirmed = true;
+        mRovinPendingNativeFocusStart = false;
+        mRovinXrStartFailureCount = 0;
+        resetRovinStartupBridgeState();
+        cancelPendingRovinWarmResumeFallback();
+        if (mRovinLandingWidget != null && mRovinLandingWidget.isVisible()) {
+            mRovinLandingWidget.hide(REMOVE_WIDGET);
+            mRovinLandingWidget = null;
+        }
+        stopRovinStartupPolling();
+    }
+
+    public void handleRovinXrStartFailed(@Nullable String payload) {
+        runOnUiThread(() -> {
+            if (mRovinImmersiveActiveConfirmed
+                    || (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue()))) {
+                Log.i(LOGTAG, "Rovin Runtime: Ignoring XR start failure because immersive is already active.");
+                return;
+            }
+
+            mRovinXrStartFailureCount += 1;
+            mIsLaunchingVr = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = true;
+            mRovinReady = true;
+            cancelPendingRovinStartupBridge();
+            stopRovinStartupPolling();
+            onDismissWebXRInterstitial();
+            setPrimaryBrowserChromeVisible(false);
+
+            Log.w(LOGTAG, "Rovin Runtime: JS WebXR start failed; scheduling native focus-gated retry "
+                    + mRovinXrStartFailureCount + "/" + ROVIN_XR_START_MAX_FAILURES
+                    + ". payload=" + payload);
+            rovinLog("System: WebXR start failed; waiting before native retry "
+                    + mRovinXrStartFailureCount + "/" + ROVIN_XR_START_MAX_FAILURES + ".");
+
+            if (mRovinXrStartFailureCount >= ROVIN_XR_START_MAX_FAILURES) {
+                Log.e(LOGTAG, "Rovin Runtime: WebXR start failed too many times; leaving page alive.");
+                rovinLog("System: WebXR retry limit reached; leaving the loading page alive.");
+                return;
+            }
+
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow == null || focusedWindow.getSession() == null) {
+                Log.w(LOGTAG, "Rovin Runtime: XR failure retry deferred; no focused session is available.");
+                return;
+            }
+
+            if (!mRovinNativeVrFocused) {
+                Log.i(LOGTAG, "Rovin Runtime: XR failure retry deferred until native VR focus returns.");
+                return;
+            }
+
+            mPendingRovinStartupBridge = () -> {
+                mPendingRovinStartupBridge = null;
+                WindowWidget currentWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+                if (!mRovinNativeVrFocused) {
+                    Log.i(LOGTAG, "Rovin Runtime: Native VR focus lost before XR failure retry.");
+                    mRovinPendingNativeFocusStart = true;
+                    return;
+                }
+                scheduleRovinStartOnFocusedWindow(currentWindow, "xr-start-failed");
+            };
+            getRovinStartupBridgeHandler().postDelayed(mPendingRovinStartupBridge, ROVIN_XR_START_RETRY_DELAY_MS);
+        });
+    }
+
+    public void stopRovinStartupPolling() {
+        runOnUiThread(() -> {
+            if (mStartupPollingHandler != null && mStartupPollingRunnable != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Stopping readiness polling.");
+                mStartupPollingHandler.removeCallbacks(mStartupPollingRunnable);
+            }
+        });
+    }
+
+    private void pollRovinLoadedStatus() {
+        mStartupPollingCount++;
+        Log.d(LOGTAG, "Rovin Runtime: Polling readiness... Attempt " + mStartupPollingCount);
+
+        if (mRovinTransitionTriggered) {
+            Log.i(LOGTAG, "Rovin Runtime: Startup bridge already triggered. Stopping readiness polling.");
+            stopRovinStartupPolling();
+            return;
+        }
+
+        if (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue())) {
+            Log.i(LOGTAG, "Rovin Runtime: Immersive mode detected. Stopping startup polling.");
+            stopRovinStartupPolling();
+            return;
+        }
+
+        WindowWidget focusedWindow = mWindows.getFocusedWindow();
+        if (focusedWindow != null && focusedWindow.getSession() != null) {
+            String currentTitle = focusedWindow.getSession().getCurrentTitle();
+            if (currentTitle != null && currentTitle.contains(ROVIN_READY_TITLE_MARKER)) {
+                Log.i(LOGTAG, "Rovin Runtime: Readiness title marker detected.");
+                handleRovinLoadedResult(true);
+                return;
+            }
+            focusedWindow.getSession().loadUri(ROVIN_POLL_LOADED_JS);
+        }
+
+        if (mStartupPollingCount >= ROVIN_STARTUP_MAX_ATTEMPTS) {
+            Log.w(LOGTAG, "Rovin Runtime: Polling timeout exceeded (" + ROVIN_STARTUP_MAX_ATTEMPTS
+                    + "s). Attempting JS startup bridge without native fallback UI.");
+            if (focusedWindow != null && focusedWindow.getSession() != null) {
+                rovinLog("System: Native readiness timed out; attempting JS startup bridge.");
+                if (mRovinNativeVrFocused) {
+                    mRovinReady = true;
+                    scheduleRovinStartOnFocusedWindow(focusedWindow, "readiness-timeout");
+                } else {
+                    Log.i(LOGTAG, "Rovin Runtime: Timeout reached before native VR focus; deferring JS startup bridge.");
+                    rovinLog("System: Waiting for native VR focus before timeout fallback request.");
+                    mRovinReady = true;
+                    mRovinPendingNativeFocusStart = true;
+                }
+            } else {
+                mRovinReady = false;
+                mIsLaunchingVr = false;
+                mRovinImmersiveActiveConfirmed = false;
+                mRovinTransitionTriggered = false;
+                mRovinPendingNativeFocusStart = false;
+                resetRovinStartupBridgeState();
+                cancelPendingRovinWarmResumeFallback();
+                cancelPendingRovinAutoLaunch();
+            }
+            stopRovinStartupPolling();
+            return;
+        }
+
+        if (mStartupPollingHandler != null && mStartupPollingRunnable != null) {
+            mStartupPollingHandler.postDelayed(mStartupPollingRunnable, ROVIN_STARTUP_POLLING_INTERVAL_MS);
+        }
+    }
+    public void handleRovinLoadedResult(boolean loaded) {
+        runOnUiThread(() -> {
+            if (loaded) {
+                Log.i(LOGTAG, "Rovin Runtime: Polling success! Engine is fully loaded.");
+                rovinLog("System: Polling success! Triggering VR handshake.");
+                signalReadyForVr();
+            }
+        });
+    }
+
+    private void showStartupFallbackUI() {
+        runOnUiThread(() -> {
+            mRovinReady = false;
+            mIsLaunchingVr = false;
+            mRovinImmersiveActiveConfirmed = false;
+            mRovinTransitionTriggered = false;
+            mRovinPendingNativeFocusStart = false;
+            mRovinXrStartFailureCount = 0;
+            resetRovinStartupBridgeState();
+            cancelPendingRovinWarmResumeFallback();
+            cancelPendingRovinAutoLaunch();
+
+            if (mWebXRInterstitial != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Showing fallback 'Enter Game' button.");
+                mWebXRInterstitial.showFallbackButton();
+                return;
+            }
+
+            Log.i(LOGTAG, "Rovin Runtime: Showing Rovin landing fallback for manual retry.");
+            final RovinLaunchTarget target = resolveRovinLaunchTarget();
+            setPrimaryBrowserChromeVisible(false);
+
+            if (mRovinLandingWidget == null) {
+                mRovinLandingWidget = new RovinLandingDialogWidget(this);
+                mRovinLandingWidget.setDelegate(new RovinLandingDialogWidget.Delegate() {
+                    @Override
+                    public void onPlayRequested() {
+                        retryRovinStartupFromFallback();
+                    }
+
+                    @Override
+                    public void onRecoveryBrowserRequested() {
+                        openRecoveryBrowser(resolveRovinLaunchTarget());
+                    }
+
+                    @Override
+                    public void onRetryRequested() {
+                        showRovinLanding();
+                    }
+                });
+            }
+
+            if (target.valid) {
+                mRovinLandingWidget.bindReady(
+                        BuildConfig.ROVIN_PRODUCT_TITLE,
+                        "Startup took longer than expected. Press Play to retry.");
+            } else {
+                mRovinLandingWidget.bindError(BuildConfig.ROVIN_PRODUCT_TITLE, target.statusMessage);
+            }
+            mRovinLandingWidget.show(UIWidget.REQUEST_FOCUS);
+        });
+    }
+
+    private void retryRovinStartupFromFallback() {
+        runOnUiThread(() -> {
+            WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+            if (focusedWindow != null && focusedWindow.getSession() != null) {
+                Log.i(LOGTAG, "Rovin Runtime: Retrying startup readiness on current page.");
+                if (mRovinLandingWidget != null) {
+                    mRovinLandingWidget.hide(REMOVE_WIDGET);
+                }
+                onDismissWebXRInterstitial();
+                setPrimaryBrowserChromeVisible(false);
+                startRovinStartupPolling();
+                return;
+            }
+
+            Log.w(LOGTAG, "Rovin Runtime: Fallback retry has no focused page; relaunching target.");
+            launchRovinExperience(resolveRovinLaunchTarget());
+        });
+    }
     @Override
     protected void onDestroy() {
-        ((VRBrowserApplication)getApplication()).onActivityDestroy();
+        ((VRBrowserApplication) getApplication()).onActivityDestroy();
         SettingsStore.getInstance(getBaseContext()).setPid(0);
         // Unregister the crash service broadcast receiver
         unregisterReceiver(mCrashReceiver);
@@ -766,7 +1349,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         mFragmentController.dispatchDestroy();
 
-        for (Widget widget: mWidgets.values()) {
+        for (Widget widget : mWidgets.values()) {
             widget.releaseWidget();
         }
 
@@ -801,21 +1384,35 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         super.onDestroy();
         getLifecycleRegistry().setCurrentState(Lifecycle.State.DESTROYED);
         mViewModelStore.clear();
-        // Always exit to work around https://github.com/MozillaReality/FirefoxReality/issues/3363
+        // Always exit to work around
+        // https://github.com/MozillaReality/FirefoxReality/issues/3363
         finish();
         System.exit(0);
     }
 
     @Override
     protected void onNewIntent(final Intent intent) {
-        Log.d(LOGTAG,"VRBrowserActivity onNewIntent");
+        Log.d(LOGTAG, "VRBrowserActivity onNewIntent");
         super.onNewIntent(intent);
         setIntent(intent);
 
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
             Log.e(LOGTAG, "Restarted after a crash");
+        } else if (shouldPreserveRovinWarmIntent()) {
+            Log.i("VRB", "NeonChuck: warm intent while runtime is active; preserving existing immersive page");
+            resumeRovinImmersiveIfNeeded("warm-intent");
+        } else if (isLaunchImmersive() && !isFinishing()) {
+            Log.i("VRB", "NeonChuck: onNewIntent warm-start detected");
+            Uri targetUri = intent.getData();
+            String currentUri = (mWindows != null && mWindows.getFocusedWindow() != null)
+                    ? mWindows.getFocusedWindow().getSession().getCurrentUri()
+                    : "";
+            if (targetUri != null && !currentUri.isEmpty() && currentUri.startsWith(targetUri.toString())) {
+                Log.i("VRB", "NeonChuck: Same site in warm-start, skipping relaunch loop");
+            } else {
+                loadFromIntent(intent);
+            }
         } else if (isLaunchImmersive()) {
-            // We need to restart the Activity to ensure that the engine settings are initialized.
             finish();
             startActivity(intent);
         } else {
@@ -828,8 +1425,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         Language language = LocaleUtils.getDisplayLanguage(this);
         newConfig.setLocale(language.getLocale());
         // TODO: Deprecated updateConfiguration(Configuration,DisplayMetrics),
-        //  see https://github.com/Igalia/wolvic/issues/797
-        getBaseContext().getResources().updateConfiguration(newConfig, getBaseContext().getResources().getDisplayMetrics());
+        // see https://github.com/Igalia/wolvic/issues/797
+        getBaseContext().getResources().updateConfiguration(newConfig,
+                getBaseContext().getResources().getDisplayMetrics());
 
         LocaleUtils.update(this, language);
 
@@ -886,7 +1484,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         if (getCrashReportIntent().action_crashed.equals(intent.getAction())) {
-            Log.e(LOGTAG,"Loading from crash Intent");
+            Log.e(LOGTAG, "Loading from crash Intent");
         }
 
         // FIXME https://github.com/MozillaReality/FirefoxReality/issues/3066
@@ -917,7 +1515,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         Uri targetUri = null;
         Bundle extras;
 
-        if (dataUri != null && dataUri.getScheme().equals(CUSTOM_URI_SCHEME) && dataUri.getHost().equals(CUSTOM_URI_HOST)) {
+        if (dataUri != null && dataUri.getScheme().equals(CUSTOM_URI_SCHEME)
+                && dataUri.getHost().equals(CUSTOM_URI_HOST)) {
             Log.d(LOGTAG, "Parsing custom URI from intent: " + dataUri);
 
             extras = new Bundle();
@@ -940,7 +1539,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         }
 
         if (extras != null) {
-            // targetUri will be null here if the data URI is empty or contains a custom URI;
+            // targetUri will be null here if the data URI is empty or contains a custom
+            // URI;
             // in that case, we will use the "url" parameter if it exists
             if (targetUri == null && extras.containsKey(EXTRA_URL)) {
                 targetUri = Uri.parse(extras.getString(EXTRA_URL));
@@ -957,7 +1557,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 }
             }
 
-            // Open the tab in background/foreground, if there is no URL provided we just open the homepage
+            // Open the tab in background/foreground, if there is no URL provided we just
+            // open the homepage
             if (extras.containsKey(EXTRA_OPEN_IN_BACKGROUND)) {
                 openInBackground = extras.getBoolean(EXTRA_OPEN_IN_BACKGROUND, false);
                 if (targetUri == null) {
@@ -965,7 +1566,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 }
             }
 
-            // Open the provided URL in a new window, if there is no URL provided we just open the homepage
+            // Open the provided URL in a new window, if there is no URL provided we just
+            // open the homepage
             if (extras.containsKey(EXTRA_CREATE_NEW_WINDOW)) {
                 openInWindow = extras.getBoolean(EXTRA_CREATE_NEW_WINDOW, false);
                 if (targetUri == null) {
@@ -993,8 +1595,11 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 mImmersiveParentElementXPath = extras.getString(EXTRA_LAUNCH_IMMERSIVE_PARENT_XPATH);
                 mImmersiveTargetElementXPath = extras.getString(EXTRA_LAUNCH_IMMERSIVE_ELEMENT_XPATH);
 
-                // Open in immersive requires specific information to be present
-                mLaunchImmersive = targetUri != null && mImmersiveTargetElementXPath != null;
+                // ROVIN: Disable native-forced auto-immersive launch during startup.
+                // We want the game to load in 2D first, then use our polling handshake
+                // to trigger VR when the JS engine is actually ready.
+                // mLaunchImmersive |= targetUri != null && mImmersiveTargetElementXPath != null;
+                Log.i(LOGTAG, "Rovin Runtime: EXTRA_LAUNCH_IMMERSIVE detected but suppressed for handshake stability.");
             }
         }
 
@@ -1006,8 +1611,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
             if (openInKioskMode) {
                 // FIXME this might not work as expected if the app was already running
-                mWindows.openInKioskMode(targetUri.toString());
-            } if (mLaunchImmersive) {
+                mWindows.openInKioskMode(addRovinBridgeCapabilities(targetUri.toString()));
+            }
+            if (mLaunchImmersive) {
                 mWindows.openInImmersiveMode(targetUri, mImmersiveParentElementXPath, mImmersiveTargetElementXPath);
             } else {
                 if (openInWindow) {
@@ -1016,26 +1622,44 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     location = Windows.OPEN_IN_BACKGROUND;
                 }
                 if (location == Windows.OPEN_IN_FOREGROUND) {
-                    mWindows.findTabAndSelect(targetUri.toString());
+                    mWindows.findTabAndSelect(addRovinBridgeCapabilities(targetUri.toString()));
                 } else {
-                    mWindows.openNewTabAfterRestore(targetUri.toString(), location);
+                    mWindows.openNewTabAfterRestore(addRovinBridgeCapabilities(targetUri.toString()), location);
                 }
             }
-        } else if (mWindows.getFocusedWindow().isCurrentUriBlank()) {
-            final RovinLaunchTarget target = resolveRovinLaunchTarget();
-            if (target.valid && !StringUtils.isEmpty(target.url)) {
-                launchRovinExperience(target);
-            } else {
-                showRovinLanding();
-            }
+        } else if (mWindows.getFocusedWindow() != null && mWindows.getFocusedWindow().isCurrentUriBlank()) {
+            showRovinLanding();
         } else {
-            Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + mWindows.getFocusedWindow().getSession().getCurrentUri());
+            // ROVIN: Port Repair Logic
+            // If the tab is already open with a Rovin Product URL but on a different port
+            // (from a previous session),
+            // we must force-redirect it to the new port to prevent "Connection Refused"
+            // blackouts.
+            WindowWidget focusedWindow = mWindows.getFocusedWindow();
+            Session session = focusedWindow != null ? focusedWindow.getSession() : null;
+            String currentUri = session != null ? session.getCurrentUri() : null;
+            RovinLaunchTarget target = resolveRovinLaunchTarget();
+
+            if (currentUri != null && target != null && target.valid && !StringUtils.isEmpty(target.url)) {
+                Uri current = Uri.parse(currentUri);
+                Uri latest = Uri.parse(target.url);
+
+                // If it's the same host but different port, force reload with the new port.
+                if ("127.0.0.1".equals(current.getHost()) && current.getPort() != latest.getPort()) {
+                    Log.i(LOGTAG, "Rovin Port Repair: Redirecting stale tab from port " + current.getPort() + " to "
+                            + latest.getPort());
+                    launchRovinExperience(target);
+                    return;
+                }
+            }
+            Log.d(LOGTAG, "Skipping Rovin landing because focused window is not blank. Current URI=" + currentUri);
         }
     }
 
     private void showRovinLanding() {
         final RovinLaunchTarget target = resolveRovinLaunchTarget();
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         setPrimaryBrowserChromeVisible(false);
 
         if (mRovinLandingWidget == null) {
@@ -1070,6 +1694,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void launchRovinExperience(@NonNull RovinLaunchTarget target) {
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         if (!target.valid || StringUtils.isEmpty(target.url)) {
             showRovinLanding();
             return;
@@ -1082,11 +1707,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
         setPrimaryBrowserChromeVisible(false);
         mWindows.openInKioskMode(target.url);
-        setPrimaryBrowserChromeVisible(false);
+        startRovinStartupPolling();
     }
 
     private void openRecoveryBrowser(@NonNull RovinLaunchTarget target) {
         cancelPendingRovinAutoLaunch();
+        cancelPendingRovinWarmResumeFallback();
         final String recoveryUrl = getRecoveryBrowserUrl(target);
         if (StringUtils.isEmpty(recoveryUrl)) {
             showRovinLanding();
@@ -1136,29 +1762,27 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 return RovinLaunchTarget.error(
                         getString(R.string.rovin_landing_error_missing_target),
                         true,
-                        true
-                );
+                        true);
             }
             return RovinLaunchTarget.ready(
-                    addRovinPauseBridgeCapability(bundledUrl),
+                    addRovinBridgeCapabilities(bundledUrl),
                     getString(R.string.rovin_landing_description_bundled),
                     true,
-                    true
-            );
+                    true);
         }
 
         if (!StringUtils.isEmpty(BuildConfig.ROVIN_FIXED_TARGET_URL)) {
             final String status = bundledPreferred && !bundledAvailable
                     ? getString(R.string.rovin_landing_error_bundled_missing)
                     : getString(R.string.rovin_landing_description);
-            return RovinLaunchTarget.ready(addRovinPauseBridgeCapability(BuildConfig.ROVIN_FIXED_TARGET_URL), status, bundledPreferred, bundledAvailable);
+            return RovinLaunchTarget.ready(addRovinBridgeCapabilities(BuildConfig.ROVIN_FIXED_TARGET_URL), status,
+                    bundledPreferred, bundledAvailable);
         }
 
         return RovinLaunchTarget.error(
                 getString(R.string.rovin_landing_error_missing_target),
                 bundledPreferred,
-                bundledAvailable
-        );
+                bundledAvailable);
     }
 
     private boolean hasBundledGameAsset() {
@@ -1208,11 +1832,19 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @NonNull
-    private String addRovinPauseBridgeCapability(@NonNull String url) {
-        return Uri.parse(url).buildUpon()
+    private String addRovinBridgeCapabilities(@NonNull String url) {
+        final Uri parsed = Uri.parse(url);
+        final Uri.Builder builder = parsed.buildUpon()
                 .appendQueryParameter(ROVIN_PAUSE_BRIDGE_QUERY_PARAM, "1")
-                .build()
-                .toString();
+                .appendQueryParameter(ROVIN_NATIVE_HAPTICS_BRIDGE_QUERY_PARAM, "1")
+                .appendQueryParameter(ROVIN_SAVE_BRIDGE_QUERY_PARAM, "1")
+                .appendQueryParameter(ROVIN_RUNTIME_QUERY_PARAM, "1");
+
+        if (!parsed.getQueryParameterNames().contains(ROVIN_RENDER_SCALE_QUERY_PARAM)) {
+            builder.appendQueryParameter(ROVIN_RENDER_SCALE_QUERY_PARAM, ROVIN_RENDER_SCALE_DEFAULT);
+        }
+
+        return builder.build().toString();
     }
 
     @NonNull
@@ -1316,9 +1948,17 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE:
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW:
             case ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL:
-                // It looks like these come in all at the same time so just always suspend inactive Sessions.
-                Log.d(LOGTAG, "Memory pressure, suspending inactive sessions.");
-                SessionStore.get().suspendAllInactiveSessions();
+                // It looks like these come in all at the same time so just always suspend
+                // inactive Sessions.
+                Log.i("VRB",
+                        "RovinProduct: Memory pressure (TRIM_MEMORY_RUNNING_CRITICAL), suspending inactive sessions.");
+                try {
+                    if (SessionStore.get() != null) {
+                        SessionStore.get().suspendAllInactiveSessions();
+                    }
+                } catch (Exception e) {
+                    Log.e("VRB", "RovinProduct: Failed to suspend sessions during memory pressure: " + e.getMessage());
+                }
                 break;
             default:
                 Log.e(LOGTAG, "onTrimMemory unknown level: " + level);
@@ -1328,9 +1968,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     private void showAppExitDialog() {
         mWindows.getFocusedWindow().showConfirmPrompt(
-            getString(R.string.app_name),
-            getString(R.string.exit_confirm_dialog_body, getString(R.string.app_name)),
-                new String[]{
+                getString(R.string.app_name),
+                getString(R.string.exit_confirm_dialog_body, getString(R.string.app_name)),
+                new String[] {
                         getString(R.string.exit_confirm_dialog_button_cancel),
                         getString(R.string.exit_confirm_dialog_button_quit),
                 }, (index, isChecked) -> {
@@ -1374,7 +2014,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         @Override
         public void run() {
             exitImmersiveNative();
-            synchronized(mWaitLock) {
+            synchronized (mWaitLock) {
                 mWaitLock.notifyAll();
             }
         }
@@ -1401,7 +2041,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 return;
             }
             if (aTexture == null) {
-                Log.d(LOGTAG, "Widget: " + aHandle + " (" + aWidth + "x" + aHeight + ") received a null surface texture.");
+                Log.d(LOGTAG,
+                        "Widget: " + aHandle + " (" + aWidth + "x" + aHeight + ") received a null surface texture.");
             } else {
                 Runnable aFirstDrawCallback = () -> {
                     if (!widget.isFirstPaintReady()) {
@@ -1414,14 +2055,16 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             // Add widget to a virtual display for invalidation
             View view = (View) widget;
             if (view.getParent() == null) {
-                mWidgetContainer.addView(view, new FrameLayout.LayoutParams(widget.getPlacement().viewWidth(), widget.getPlacement().viewHeight()));
+                mWidgetContainer.addView(view, new FrameLayout.LayoutParams(widget.getPlacement().viewWidth(),
+                        widget.getPlacement().viewHeight()));
             }
         });
     }
 
     @Keep
     @SuppressWarnings("unused")
-    void dispatchCreateWidgetLayer(final int aHandle, final Surface aSurface, final int aWidth, final int aHeight, final long aNativeCallback) {
+    void dispatchCreateWidgetLayer(final int aHandle, final Surface aSurface, final int aWidth, final int aHeight,
+            final long aNativeCallback) {
         runOnUiThread(() -> {
             final Widget widget = mWidgets.get(aHandle);
             if (widget == null) {
@@ -1438,19 +2081,20 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     updateWidget(widget);
                 }
             },
-            () -> {
-                if (aNativeCallback != 0) {
-                    queueRunnable(() -> deleteCallbackNative(aNativeCallback));
-                }
-            });
+                    () -> {
+                        if (aNativeCallback != 0) {
+                            queueRunnable(() -> deleteCallbackNative(aNativeCallback));
+                        }
+                    });
 
             widget.setSurface(aSurface, aWidth, aHeight, firstDrawCallback);
 
             UIWidget view = (UIWidget) widget;
             // Add widget to a virtual display for invalidation
             if (aSurface != null && view.getParent() == null) {
-                mWidgetContainer.addView(view, new FrameLayout.LayoutParams(widget.getPlacement().viewWidth(), widget.getPlacement().viewHeight()));
-            }  else if (aSurface == null && view.getParent() != null) {
+                mWidgetContainer.addView(view, new FrameLayout.LayoutParams(widget.getPlacement().viewWidth(),
+                        widget.getPlacement().viewHeight()));
+            } else if (aSurface == null && view.getParent() != null) {
                 mWidgetContainer.removeView(view);
             }
             view.setResizing(false);
@@ -1460,7 +2104,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Keep
     @SuppressWarnings("unused")
-    void handleMotionEvent(final int aHandle, final int aDevice, final boolean aFocused, final boolean aPressed, final float aX, final float aY) {
+    void handleMotionEvent(final int aHandle, final int aDevice, final boolean aFocused, final boolean aPressed,
+            final float aX, final float aY) {
         runOnUiThread(() -> {
             Widget widget = mWidgets.get(aHandle);
 
@@ -1469,8 +2114,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             }
             mLastMotionEventWidgetHandle = widget != null ? widget.getHandle() : 0;
 
-            float scale = widget != null ? widget.getPlacement().textureScale : SettingsStore.getInstance(this).getDisplayDpi() / 100.0f;
-            // We shouldn't divide the scale factor when we pass the motion event to the web engine
+            float scale = widget != null ? widget.getPlacement().textureScale
+                    : SettingsStore.getInstance(this).getDisplayDpi() / 100.0f;
+            // We shouldn't divide the scale factor when we pass the motion event to the web
+            // engine
             if (widget instanceof WindowWidget) {
                 WindowWidget windowWidget = (WindowWidget) widget;
                 if (!windowWidget.isNativeContentVisible()) {
@@ -1511,8 +2158,9 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                     return;
                 }
             }
-            float scrollDirection = mSettings.getScrollDirection() == SettingsStore.SCROLL_DIRECTION_NATURAL ? 1.0f : -1.0f;
-            MotionEventGenerator.dispatchScroll(widget, aDevice, true,aX * scrollDirection, aY * scrollDirection);
+            float scrollDirection = mSettings.getScrollDirection() == SettingsStore.SCROLL_DIRECTION_NATURAL ? 1.0f
+                    : -1.0f;
+            MotionEventGenerator.dispatchScroll(widget, aDevice, true, aX * scrollDirection, aY * scrollDirection);
         });
     }
 
@@ -1546,7 +2194,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         });
     }
 
-    @SuppressWarnings({"UnusedDeclaration"})
+    @SuppressWarnings({ "UnusedDeclaration" })
     @Keep
     void handleBack() {
         runOnUiThread(() -> {
@@ -1555,7 +2203,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         });
     }
 
-    @SuppressWarnings({"UnusedDeclaration"})
+    @SuppressWarnings({ "UnusedDeclaration" })
     @Keep
     void handleAppButton() {
         runOnUiThread(() -> {
@@ -1569,7 +2217,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         });
     }
 
-    @SuppressWarnings({"UnusedDeclaration"})
+    @SuppressWarnings({ "UnusedDeclaration" })
     @Keep
     void handleAppExit() {
         runOnUiThread(() -> {
@@ -1578,7 +2226,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @Keep
-    @SuppressWarnings({"UnusedDeclaration"})
+    @SuppressWarnings({ "UnusedDeclaration" })
     void handleAudioPose(float qx, float qy, float qz, float qw, float px, float py, float pz) {
         mAudioEngine.setPose(qx, qy, qz, qw, px, py, pz);
 
@@ -1595,7 +2243,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Keep
     @SuppressWarnings("unused")
-    void handleMoveEnd(final int aHandle, final float aDeltaX, final float aDeltaY, final float aDeltaZ, final float aRotation) {
+    void handleMoveEnd(final int aHandle, final float aDeltaX, final float aDeltaY, final float aDeltaZ,
+            final float aRotation) {
         runOnUiThread(() -> {
             Widget widget = mWidgets.get(aHandle);
             if (widget != null) {
@@ -1614,6 +2263,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     class PauseCompositorRunnable implements Runnable {
         public boolean done;
+
         @Override
         public void run() {
             synchronized (mCompositorLock) {
@@ -1633,9 +2283,10 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
         mIsPresentingImmersive.postValue(true);
+        mLaunchImmersive = true; // ROVIN: Persist immersive state for warm-starts
         runOnUiThread(() -> {
             mWindows.enterImmersiveMode();
-            for (WebXRListener listener: mWebXRListeners) {
+            for (WebXRListener listener : mWebXRListeners) {
                 listener.onEnterWebXR();
             }
         });
@@ -1664,14 +2315,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mIsPresentingImmersive.postValue(false);
         TelemetryService.stopImmersive();
 
-        if (mLaunchImmersive) {
+        if (mLaunchImmersive && !mIsBackgrounding
+                && getLifecycle().getCurrentState() != androidx.lifecycle.Lifecycle.State.RESUMED) {
             Log.d(LOGTAG, "Launched in immersive mode: exiting WebXR will finish the app");
             finish();
         }
 
         runOnUiThread(() -> {
             mWindows.exitImmersiveMode();
-            for (WebXRListener listener: mWebXRListeners) {
+            for (WebXRListener listener : mWebXRListeners) {
                 listener.onExitWebXR();
             }
         });
@@ -1691,11 +2343,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             }
         }, 20);
     }
+
     @Keep
     @SuppressWarnings("unused")
     void onDismissWebXRInterstitial() {
         runOnUiThread(() -> {
-            for (WebXRListener listener: mWebXRListeners) {
+            for (WebXRListener listener : mWebXRListeners) {
                 listener.onDismissWebXRInterstitial();
             }
         });
@@ -1705,7 +2358,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @SuppressWarnings("unused")
     void onWebXRRenderStateChange(boolean aRendering) {
         runOnUiThread(() -> {
-            for (WebXRListener listener: mWebXRListeners) {
+            for (WebXRListener listener : mWebXRListeners) {
                 listener.onWebXRRenderStateChange(aRendering);
             }
         });
@@ -1732,8 +2385,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 paint.setStyle(Paint.Style.STROKE);
                 canvas.drawCircle(x, y, radius, paint);
                 aSurface.unlockCanvasAndPost(canvas);
-            }
-            catch (Exception ex) {
+            } catch (Exception ex) {
                 ex.printStackTrace();
             }
             if (aNativeCallback != 0) {
@@ -1788,7 +2440,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private void setUseHardwareAcceleration() {
-        UISurfaceTextureRenderer.setUseHardwareAcceleration(SettingsStore.getInstance(getBaseContext()).isUIHardwareAccelerationEnabled());
+        UISurfaceTextureRenderer.setUseHardwareAcceleration(
+                SettingsStore.getInstance(getBaseContext()).isUIHardwareAccelerationEnabled());
     }
 
     @Keep
@@ -1831,16 +2484,16 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
                 return;
             }
             window.getSession().loadHomePage();
-            final String[] buttons = {getString(R.string.ok_button), getString(R.string.performance_unblock_page)};
+            final String[] buttons = { getString(R.string.ok_button), getString(R.string.performance_unblock_page) };
             window.showConfirmPrompt(getString(R.string.performance_title),
                     getString(R.string.performance_message),
                     buttons,
                     (index, isChecked) -> {
-                if (index == PromptDialogWidget.NEGATIVE) {
-                    mPoorPerformanceAllowList.add(originalUri);
-                    window.getSession().loadUri(originalUri);
-                }
-            });
+                        if (index == PromptDialogWidget.NEGATIVE) {
+                            mPoorPerformanceAllowList.add(originalUri);
+                            window.getSession().loadUri(originalUri);
+                        }
+                    });
         });
     }
 
@@ -1874,7 +2527,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @Keep
     @SuppressWarnings("unused")
     private void appendAppNotesToCrashReport(String aNotes) {
-        runOnUiThread(() -> EngineProvider.INSTANCE.getOrCreateRuntime(VRBrowserActivity.this).appendAppNotesToCrashReport(aNotes));
+        runOnUiThread(() -> EngineProvider.INSTANCE.getOrCreateRuntime(VRBrowserActivity.this)
+                .appendAppNotesToCrashReport(aNotes));
     }
 
     @Keep
@@ -1887,26 +2541,70 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         long currentTime = System.nanoTime();
         if (((currentTime - mLastBatteryUpdate) >= BATTERY_UPDATE_INTERVAL) || mLastBatteryLevel == -1) {
             mLastBatteryUpdate = currentTime;
-            BatteryManager bm = (BatteryManager)getSystemService(BATTERY_SERVICE);
+            BatteryManager bm = (BatteryManager) getSystemService(BATTERY_SERVICE);
             mLastBatteryLevel = bm == null ? 100 : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
         }
 
         Intent intent = null;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            intent = this.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
+            intent = this.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                    Context.RECEIVER_NOT_EXPORTED);
         } else {
             intent = this.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         }
         int plugged = intent == null ? -1 : intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
-        boolean isCharging = plugged == BatteryManager.BATTERY_PLUGGED_AC || plugged == BatteryManager.BATTERY_PLUGGED_USB || plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS;
+        boolean isCharging = plugged == BatteryManager.BATTERY_PLUGGED_AC
+                || plugged == BatteryManager.BATTERY_PLUGGED_USB || plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS;
         mTray.setBatteryLevels(mLastBatteryLevel, isCharging, leftLevel, rightLevel);
+    }
+
+    private boolean shouldForwardRovinFocusToPage() {
+        return mRovinImmersiveActiveConfirmed
+                || (mIsPresentingImmersive != null && Boolean.TRUE.equals(mIsPresentingImmersive.getValue()));
     }
 
     @Keep
     @SuppressWarnings("unused")
     private void onAppFocusChanged(final boolean aIsFocused) {
         runOnUiThread(() -> {
+            mRovinNativeVrFocused = aIsFocused;
+            if (!aIsFocused) {
+                cancelPendingRovinStartupBridge();
+                if (mRovinReady && !mRovinTransitionTriggered && !mRovinImmersiveActiveConfirmed) {
+                    mRovinPendingNativeFocusStart = true;
+                }
+            } else {
+                primeRovinRuntimeControllerInput("native-focus-gained");
+            }
             Session session = SessionStore.get().getActiveSession();
+            if (session == null || session.getCurrentUri() == null || session.getCurrentUri().isBlank()) {
+                return;
+            }
+
+            if (aIsFocused && mRovinPendingNativeFocusStart && mRovinReady
+                    && !mRovinTransitionTriggered && !mRovinImmersiveActiveConfirmed) {
+                Log.i(LOGTAG, "Rovin Runtime: Native VR focus gained; scheduling deferred JS startup bridge.");
+                WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+                scheduleRovinStartOnFocusedWindow(focusedWindow, "native-vr-focus");
+            }
+
+            if (!shouldForwardRovinFocusToPage()) {
+                Log.d("VRB", "RovinProduct: Native focus changed before immersive gameplay; not forwarding to page. focused=" + aIsFocused);
+                return;
+            }
+
+            if (aIsFocused) {
+                Log.i("VRB", "RovinProduct: Focus GAINED");
+                if (session != null && !session.isShutdown()) {
+                    session.loadUri(ROVIN_APP_FOCUS_GAINED_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+                }
+            } else {
+                Log.i("VRB", "RovinProduct: Focus LOST");
+                if (session != null && !session.isShutdown()) {
+                    session.loadUri(ROVIN_APP_FOCUS_LOST_JS, WSession.LOAD_FLAGS_REPLACE_HISTORY);
+                }
+            }
+
             if (session.getActiveVideo() == null || !session.getActiveVideo().isActive())
                 return;
             if (aIsFocused) {
@@ -1921,18 +2619,45 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Keep
     @SuppressWarnings("unused")
-    private void setEyeTrackingSupported(final boolean isSupported) { mIsEyeTrackingSupported = isSupported; }
+    private void setEyeTrackingSupported(final boolean isSupported) {
+        mIsEyeTrackingSupported = isSupported;
+    }
 
     @Keep
     @SuppressWarnings("unused")
     private void setHandTrackingSupported(final boolean isSupported) {
         mIsHandTrackingSupported = isSupported;
+        primeRovinRuntimeControllerInput("hand-tracking-support");
     }
 
     @Keep
     @SuppressWarnings("unused")
     private void onControllersAvailable() {
         mAreControllersAvailable = true;
+        primeRovinRuntimeControllerInput("controllers-available");
+    }
+
+    private void primeRovinRuntimeControllerInput(@NonNull String reason) {
+        if (!BuildConfig.ROVIN_BUNDLED_CONTENT_ENABLED) {
+            return;
+        }
+
+        if (mIsHandTrackingEnabled) {
+            Log.i(LOGTAG, "Rovin Runtime: Disabling native hand tracking for controller-first input. reason=" + reason);
+            setHandTrackingEnabled(false);
+        }
+
+        for (long delayMs : ROVIN_INPUT_PRIME_DELAYS_MS) {
+            mHandler.postDelayed(() -> {
+                WindowWidget focusedWindow = mWindows != null ? mWindows.getFocusedWindow() : null;
+                if (focusedWindow == null || !focusedWindow.isVisible()) {
+                    return;
+                }
+                Log.d(LOGTAG, "Rovin Runtime: Priming focused window input. reason=" + reason);
+                focusedWindow.requestFocus();
+                focusedWindow.requestFocusFromTouch();
+            }, delayMs);
+        }
     }
 
     private SurfaceTexture createSurfaceTexture() {
@@ -1974,7 +2699,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         return mWidgetHandleIndex++;
     }
 
-
     public void addWidgets(final Iterable<? extends Widget> aWidgets) {
         for (Widget widget : aWidgets) {
             addWidget(widget);
@@ -1995,7 +2719,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean isWidgetInputEnabled(Widget aWidget) {
-        return mActiveDialog == null || aWidget == null || mActiveDialog == aWidget || aWidget instanceof KeyboardWidget;
+        return mActiveDialog == null || aWidget == null || mActiveDialog == aWidget
+                || aWidget instanceof KeyboardWidget;
     }
 
     // WidgetManagerDelegate
@@ -2005,7 +2730,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             return;
         }
         mWidgets.put(aWidget.getHandle(), aWidget);
-        ((View)aWidget).setVisibility(aWidget.getPlacement().visible ? View.VISIBLE : View.GONE);
+        ((View) aWidget).setVisibility(aWidget.getPlacement().visible ? View.VISIBLE : View.GONE);
         final int handle = aWidget.getHandle();
         final WidgetPlacement clone = aWidget.getPlacement().clone();
         queueRunnable(() -> addWidgetNative(handle, clone));
@@ -2030,9 +2755,12 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         if (aWidget == null) {
             return;
         }
-        // Enqueue widget update calls in order to batch updates on the same widget. If a widget
-        // updates several times in a short period of time, it's enough to call the native
-        // method just once. This effectively reduces the amount of XR layer creation/destruction.
+        // Enqueue widget update calls in order to batch updates on the same widget. If
+        // a widget
+        // updates several times in a short period of time, it's enough to call the
+        // native
+        // method just once. This effectively reduces the amount of XR layer
+        // creation/destruction.
         enqueueUpdateWidgetNativeCall(aWidget.getHandle(), aWidget.getPlacement().clone());
 
         final int textureWidth = aWidget.getPlacement().textureWidth();
@@ -2040,22 +2768,23 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         final int viewWidth = aWidget.getPlacement().viewWidth();
         final int viewHeight = aWidget.getPlacement().viewHeight();
 
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)((View)aWidget).getLayoutParams();
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) ((View) aWidget).getLayoutParams();
         if (params == null) {
             // Widget not added yet
             return;
         }
-        UIWidget view = (UIWidget)aWidget;
+        UIWidget view = (UIWidget) aWidget;
 
         if (params.width != viewWidth || params.height != viewHeight) {
             params.width = viewWidth;
             params.height = viewHeight;
             if (view.isLayer()) {
-                // Reuse last frame and do not render while resizing surface with Layers enabled.
+                // Reuse last frame and do not render while resizing surface with Layers
+                // enabled.
                 // Fixes resizing glitches.
                 view.setResizing(true);
             }
-            ((View)aWidget).setLayoutParams(params);
+            ((View) aWidget).setLayoutParams(params);
             aWidget.resizeSurface(textureWidth, textureHeight);
         }
 
@@ -2065,7 +2794,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
             view.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
 
-        for (UpdateListener listener: mWidgetUpdateListeners) {
+        for (UpdateListener listener : mWidgetUpdateListeners) {
             listener.onWidgetUpdate(aWidget);
         }
         updateActiveDialog(aWidget);
@@ -2087,7 +2816,7 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
 
     @Override
     public void updateWidgetsPlacementTranslationZ() {
-        for (Widget widget: mWidgets.values()) {
+        for (Widget widget : mWidgets.values()) {
             widget.getPlacement().updateCylinderMapRadius();
             widget.updatePlacementTranslationZ();
             updateWidget(widget);
@@ -2112,7 +2841,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mWindows.enterResizeMode();
         Pair<Float, Float> maxSize = aWidget.getMaxWorldSize();
         Pair<Float, Float> minSize = aWidget.getMinWorldSize();
-        queueRunnable(() -> startWidgetResizeNative(aWidget.getHandle(), maxSize.first, maxSize.second, minSize.first, minSize.second));
+        queueRunnable(() -> startWidgetResizeNative(aWidget.getHandle(), maxSize.first, maxSize.second, minSize.first,
+                minSize.second));
     }
 
     @Override
@@ -2183,7 +2913,6 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public void removeFocusChangeListener(@NonNull FocusChangeListener aListener) {
         mFocusChangeListeners.remove(aListener);
     }
-
 
     @Override
     public void addWorldClickListener(WorldClickListener aListener) {
@@ -2292,8 +3021,15 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public void triggerHapticFeedback(int controllerId) {
         SettingsStore settings = SettingsStore.getInstance(this);
         if (settings.isHapticFeedbackEnabled()) {
-            queueRunnable(() -> triggerHapticFeedbackNative(settings.getHapticPulseDuration(), settings.getHapticPulseIntensity(), controllerId));
+            queueRunnable(() -> triggerHapticFeedbackNative(settings.getHapticPulseDuration(),
+                    settings.getHapticPulseIntensity(), controllerId));
         }
+    }
+
+    public void triggerHapticPulse(float pulseDuration, float pulseIntensity, int controllerId) {
+        Log.i(LOGTAG, "Rovin Haptics: queue pulse controllerId=" + controllerId
+                + " durationMs=" + pulseDuration + " intensity=" + pulseIntensity);
+        queueRunnable(() -> triggerHapticFeedbackNative(pulseDuration, pulseIntensity, controllerId));
     }
 
     @Override
@@ -2329,18 +3065,21 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @Override
-    public void requestPermission(String originator, @NonNull String permission, OriginatorType originatorType, WSession.PermissionDelegate.Callback aCallback) {
+    public void requestPermission(String originator, @NonNull String permission, OriginatorType originatorType,
+            WSession.PermissionDelegate.Callback aCallback) {
         Session session = SessionStore.get().getActiveSession();
         if (originatorType == OriginatorType.WEBSITE) {
             mPermissionDelegate.onWebsitePermissionRequest(session.getWSession(), originator, permission, aCallback);
         } else {
-            mPermissionDelegate.onAndroidPermissionsRequest(session.getWSession(), new String[]{permission}, aCallback);
+            mPermissionDelegate.onAndroidPermissionsRequest(session.getWSession(), new String[] { permission },
+                    aCallback);
         }
     }
 
     @Override
     @Deprecated
-    public void onRequestPermissionsResult(int requestCode, @NonNull  String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         runOnUiThread(() -> {
@@ -2351,7 +3090,8 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     @Override
-    public void showVRVideo(final int aWindowHandle, final @VideoProjectionMenuWidget.VideoProjectionFlags int aVideoProjection) {
+    public void showVRVideo(final int aWindowHandle,
+            final @VideoProjectionMenuWidget.VideoProjectionFlags int aVideoProjection) {
         if (mSettings.isHeadLockEnabled()) {
             mSettings.setHeadLockEnabled(false);
             shouldRestoreHeadLockOnVRVideoExit = true;
@@ -2378,10 +3118,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     public boolean isPassthroughEnabled() {
         return mIsPassthroughEnabled;
     }
+
     @Override
     public boolean isPassthroughSupported() {
-        return DeviceType.isOculusBuild() || DeviceType.isLynx() || DeviceType.isSnapdragonSpaces() || DeviceType.isPicoXR();
+        return DeviceType.isOculusBuild() || DeviceType.isLynx() || DeviceType.isSnapdragonSpaces()
+                || DeviceType.isPicoXR();
     }
+
     @Override
     public boolean areControllersAvailable() {
         return mAreControllersAvailable;
@@ -2464,19 +3207,26 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         mWindows.focusWindow(window);
         return true;
     }
+
     @Override
     public void openNewPageNoInterrupt(@NonNull String uri) {
-        if (openNewTabNoInterrupt(mWindows.getFocusedWindow(), uri)) { return; }
+        if (openNewTabNoInterrupt(mWindows.getFocusedWindow(), uri)) {
+            return;
+        }
 
         // If we have video playing in current window, ensure we don't open a new tab
         // in a window that has active video
         if (mWindows.getWindowsCount() > 1) {
             for (WindowWidget window : mWindows.getCurrentWindows()) {
-                if (openNewTabNoInterrupt(window, uri)) { return; }
+                if (openNewTabNoInterrupt(window, uri)) {
+                    return;
+                }
             }
         }
-        // All the current opened Windows have video playing, so we have to open uri in a new window.
-        // If we have maximum window number, then open the uri as a new tab in current window.
+        // All the current opened Windows have video playing, so we have to open uri in
+        // a new window.
+        // If we have maximum window number, then open the uri as a new tab in current
+        // window.
         if (canOpenNewWindow()) {
             openNewWindow(uri);
         } else {
@@ -2539,11 +3289,13 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     @Override
     @NonNull
     public AppServicesProvider getServicesProvider() {
-        return (AppServicesProvider)getApplication();
+        return (AppServicesProvider) getApplication();
     }
 
     @Override
-    public KeyboardWidget getKeyboard() { return mKeyboard; }
+    public KeyboardWidget getKeyboard() {
+        return mKeyboard;
+    }
 
     @Override
     public void onPlatformScrollEvent(float distanceX, float distanceY) {
@@ -2561,50 +3313,55 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
         PromptDialogWidget dialog = new PromptDialogWidget(this);
         dialog.setTitle(R.string.eye_tracking_permission_title);
         dialog.setDescription(R.string.eye_tracking_permission_message);
-        dialog.setButtons(new int[] {R.string.ok_button});
+        dialog.setButtons(new int[] { R.string.ok_button });
         dialog.setCheckboxVisible(false);
         dialog.setIcon(R.drawable.mozac_ic_warning_fill_24);
         dialog.setButtonsDelegate((index, isChecked) -> {
             dialog.hide(UIWidget.REMOVE_WIDGET);
             dialog.releaseWidget();
-            requestPermission(null, getEyeTrackingPermissionString(), OriginatorType.APPLICATION, new WSession.PermissionDelegate.Callback() {
-                @Override
-                public void grant() {
-                    callback.onEyeTrackingPermissionRequest(true);
-                }
+            requestPermission(null, getEyeTrackingPermissionString(), OriginatorType.APPLICATION,
+                    new WSession.PermissionDelegate.Callback() {
+                        @Override
+                        public void grant() {
+                            callback.onEyeTrackingPermissionRequest(true);
+                        }
 
-                @Override
-                public void reject() {
-                    callback.onEyeTrackingPermissionRequest(false);
-                }
-            });
+                        @Override
+                        public void reject() {
+                            callback.onEyeTrackingPermissionRequest(false);
+                        }
+                    });
         });
         dialog.show(UIWidget.REQUEST_FOCUS);
     }
 
     @Override
-    public boolean isEyeTrackingSupported() { return mIsEyeTrackingSupported; }
+    public boolean isEyeTrackingSupported() {
+        return mIsEyeTrackingSupported;
+    }
 
     @Keep
     @SuppressWarnings("unused")
     private void changeWindowDistance(float aDelta) {
         float increment = 0.05f;
-        float clamped = Math.max(0.0f, Math.min(mSettings.getWindowDistance() + (aDelta > 0 ? increment : -increment), 1.0f));
+        float clamped = Math.max(0.0f,
+                Math.min(mSettings.getWindowDistance() + (aDelta > 0 ? increment : -increment), 1.0f));
         mSettings.setWindowDistance(clamped);
     }
 
     private boolean supportsCompositionLayers() {
-        assert(mMaxCompositionLayers.isPresent());
+        assert (mMaxCompositionLayers.isPresent());
         return mMaxCompositionLayers.getAsInt() > 1;
     }
 
     @Keep
     @SuppressWarnings("unused")
     private void onMaxCompositionLayersAvailable(int aNumLayers) {
-        assert(!mMaxCompositionLayers.isPresent());
+        assert (!mMaxCompositionLayers.isPresent());
         mMaxCompositionLayers = OptionalInt.of(aNumLayers);
         boolean supportsLayers = supportsCompositionLayers();
-        Log.i(LOGTAG, "Max composition layers: " + aNumLayers + " so " + (supportsLayers ? "enabling" : "disabling") + " layers support");
+        Log.i(LOGTAG, "Max composition layers: " + aNumLayers + " so " + (supportsLayers ? "enabling" : "disabling")
+                + " layers support");
         runOnUiThread(() -> {
             for (CheckCompositionLayersCallback callback : mCompositionLayersPendingCallbacks) {
                 callback.onCompositionLayersSupport(supportsLayers);
@@ -2623,34 +3380,64 @@ public class VRBrowserActivity extends PlatformActivity implements WidgetManager
     }
 
     private native void addWidgetNative(int aHandle, WidgetPlacement aPlacement);
+
     private native void updateWidgetNative(int aHandle, WidgetPlacement aPlacement);
+
     private native void updateVisibleWidgetsNative();
+
     private native void removeWidgetNative(int aHandle);
+
     private native void recreateWidgetSurfaceNative(int aHandle);
-    private native void startWidgetResizeNative(int aHandle, float maxWidth, float maxHeight, float minWidth, float minHeight);
+
+    private native void startWidgetResizeNative(int aHandle, float maxWidth, float maxHeight, float minWidth,
+            float minHeight);
+
     private native void finishWidgetResizeNative(int aHandle);
+
     private native void startWidgetMoveNative(int aHandle, int aMoveBehaviour);
+
     private native void finishWidgetMoveNative();
+
     private native void setWorldBrightnessNative(float aBrightness);
+
     private native void triggerHapticFeedbackNative(float aPulseDuration, float aPulseIntensity, int aControllerId);
+
     private native void setTemporaryFilePath(String aPath);
+
     private native void exitImmersiveNative();
+
     private native void workaroundGeckoSigAction();
+
     private native void updateEnvironmentNative();
+
     private native void updatePointerColorNative();
+
     private native void showVRVideoNative(int aWindowHandler, int aVideoProjection);
+
     private native void hideVRVideoNative();
+
     private native void togglePassthroughNative();
+
     private native void setLockEnabledNative(@LockMode int aLockMode);
+
     private native void recenterUIYawNative(@YawTarget int aTarget);
+
     private native void setControllersVisibleNative(boolean aVisible);
+
     private native void runCallbackNative(long aCallback);
+
     private native void deleteCallbackNative(long aCallback);
+
     private native void setCylinderDensityNative(float aDensity);
+
     private native void setCPULevelNative(@CPULevelFlags int aCPULevel);
+
     private native void setWebXRIntersitialStateNative(@WebXRInterstitialState int aState);
+
     private native void setIsServo(boolean aIsServo);
+
     private native void setPointerModeNative(@PointerMode int aMode);
+
     private native void setHandTrackingEnabledNative(boolean value);
 
 }

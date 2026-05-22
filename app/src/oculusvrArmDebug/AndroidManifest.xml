@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
     <uses-permission android:name="${permissionToRemove}" tools:node="remove" />
 
+    <!-- Strip Eye Tracking (Not used by the game, required for store compliance) -->
+    <uses-feature android:name="oculus.software.eye_tracking" tools:node="remove" />
+    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" tools:node="remove" />
+
     <uses-feature android:name="oculus.software.handtracking" android:required="false" />
     <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
     <uses-permission android:name="horizonos.permission.HAND_TRACKING" />
@@ -17,15 +21,13 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
     <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove"/>
 
-    <!-- Tell the system this app can handle tracked keyboards -->
-    <uses-feature android:name="oculus.software.trackedkeyboard" android:required="false" />
-    <uses-permission android:name="com.oculus.permission.TRACKED_KEYBOARD" />
+
 
     <!-- Tell the system this app uses render model extensions -->
     <uses-feature android:name="com.oculus.feature.RENDER_MODEL" android:required="true" />
     <uses-permission android:name="com.oculus.permission.RENDER_MODEL" />
 
-    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" />
+
 
     <application>
         <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only" />
@@ -37,5 +39,17 @@
                 <category android:name="com.oculus.intent.category.VR" android:value="vr_only"/>
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name="${runtimeActivityName}"
+            android:exported="true"
+            android:targetActivity=".VRBrowserActivity">
+            <meta-data android:name="android.app.lib_name" android:value="native-lib" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

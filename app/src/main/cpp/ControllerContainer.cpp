@@ -15,6 +15,7 @@
 #include "vrb/CreationContext.h"
 #include "vrb/Geometry.h"
 #include "vrb/Group.h"
+#include "vrb/Logger.h"
 #include "vrb/Matrix.h"
 #include "vrb/ModelLoaderAndroid.h"
 #include "vrb/Program.h"
@@ -522,6 +523,9 @@ ControllerContainer::SetHapticCount(const int32_t aControllerIndex, const uint32
   if (!m.Contains(aControllerIndex)) {
     return;
   }
+  if (m.list[aControllerIndex].numHaptics != aNumHaptics) {
+    VRB_LOG("Rovin Haptics: controller=%d hapticCount=%u", aControllerIndex, aNumHaptics);
+  }
   m.list[aControllerIndex].numHaptics = aNumHaptics;
 }
 
@@ -540,6 +544,11 @@ ControllerContainer::SetHapticFeedback(const int32_t aControllerIndex, const uin
   if (!m.Contains(aControllerIndex)) {
     return;
   }
+  VRB_LOG("Rovin Haptics: store feedback controller=%d inputFrameId=%llu durationMs=%f intensity=%f",
+          aControllerIndex,
+          (unsigned long long) aInputFrameID,
+          aPulseDuration,
+          aPulseIntensity);
   m.list[aControllerIndex].inputFrameID = aInputFrameID;
   m.list[aControllerIndex].pulseDuration = aPulseDuration;
   m.list[aControllerIndex].pulseIntensity = aPulseIntensity;

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- FEAT-0018: Only back up the versioned JSON save directory -->
+        <include domain="file" path="rovin-save"/>
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="rovin-save"/>
+    </device-transfer>
+</data-extraction-rules>

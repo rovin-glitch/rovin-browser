@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- FEAT-0018: Only back up the versioned JSON save directory -->
+    <include domain="file" path="rovin-save"/>
+</full-backup-content>

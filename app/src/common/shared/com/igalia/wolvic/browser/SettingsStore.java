@@ -159,7 +159,7 @@ public class SettingsStore {
 
     public final static @WindowSelectionMethod int WINDOW_SELECTION_METHOD_DEFAULT = WINDOW_SELECTION_METHOD_HOVER;
     public final static int POINTER_COLOR_DEFAULT_DEFAULT = Color.parseColor("#FFFFFF");
-    public final static String ENV_DEFAULT = "void";
+    public final static String ENV_DEFAULT = BuildConfig.ROVIN_DEFAULT_ENVIRONMENT_ID;
     public final static int MSAA_DEFAULT_LEVEL = 1;
     public final static boolean AUDIO_ENABLED = BuildConfig.FLAVOR_backend == "chromium";
     public final static boolean LATIN_AUTO_COMPLETE_ENABLED = false;

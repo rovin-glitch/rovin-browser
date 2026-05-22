@@ -1328,16 +1328,26 @@ BrowserWorld::EndFrame() {
 void
 BrowserWorld::TriggerHapticFeedback(const float aPulseDuration, const float aPulseIntensity, const int aControllerId) {
   if (!m.controllers) {
+    VRB_WARN("Rovin Haptics: no controller container for controller=%d durationMs=%f intensity=%f",
+             aControllerId, aPulseDuration, aPulseIntensity);
     return;
   }
 
+  VRB_LOG("Rovin Haptics: native request controller=%d durationMs=%f intensity=%f controllerCount=%u",
+          aControllerId, aPulseDuration, aPulseIntensity, m.controllers->GetControllerCount());
   for (Controller& controller: m.controllers->GetControllers()) {
     if (controller.index != aControllerId || !m.controllers->GetHapticCount(controller.index)) {
       continue;
     }
+    VRB_LOG("Rovin Haptics: dispatch controller=%d inputFrameId=%llu hapticCount=%u",
+            controller.index,
+            (unsigned long long) controller.inputFrameID,
+            m.controllers->GetHapticCount(controller.index));
     m.controllers->SetHapticFeedback(controller.index, controller.inputFrameID + 1, aPulseDuration, aPulseIntensity);
     return;
   }
+
+  VRB_WARN("Rovin Haptics: no matching haptic-capable controller for controller=%d", aControllerId);
 }
 
 void

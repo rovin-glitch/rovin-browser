@@ -1,6 +1,7 @@
 package com.igalia.wolvic.browser.api.impl;
 
 import android.content.Context;
+import android.util.Log;
 import android.graphics.Color;
 import android.net.Uri;
 import android.view.WindowManager;
@@ -46,6 +47,7 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 class PromptDelegateImpl implements UserDialogManagerBridge.Delegate {
+    private static final String LOGTAG = "PromptDelegateImpl";
     private final WSession.PromptDelegate mDelegate;
     private final SessionImpl mSession;
 
@@ -98,6 +100,7 @@ class PromptDelegateImpl implements UserDialogManagerBridge.Delegate {
     @Override
     public void onTextDialog(@NonNull String message, @NonNull String defaultUserInput,
                              UserDialogManagerBridge.DialogCallback dialogCallback) {
+        Log.d(LOGTAG, "PromptDelegateImpl: onTextDialog received! Message=" + message);
         if (mDelegate != null) {
             mDelegate.onTextPrompt(mSession, new TextPrompt(dialogCallback, message, defaultUserInput));
         } else {

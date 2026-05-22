@@ -120,15 +120,47 @@ def GECKO_RELEASE_VERSION_NAME = '1.8.3'
 def CHROMIUM_BROWSER_RELEASE_VERSION_NAME = '1.2.3-browser'
 def CHROMIUM_RUNTIME_RELEASE_VERSION_NAME = '1.0.0-runtime'
 
+def getRovinProperty = { name, fallback ->
+    def propertyName = "rovin.${name}"
+    if (project.hasProperty(propertyName)) {
+        return project.property(propertyName).toString()
+    }
+    return fallback
+}
+
+def getRovinBooleanProperty = { name, fallback ->
+    def value = getRovinProperty(name, fallback.toString())
+    return value.toString().toBoolean()
+}
+
+def rovinStringLiteral = { value ->
+    def text = value == null ? "" : value.toString()
+    return '"' + text.replace("\\", "\\\\").replace("\"", "\\\"") + '"'
+}
+
+def rovinApplicationId = getRovinProperty("applicationId", "com.rovingames.runtime")
+def rovinAppName = getRovinProperty("appName", "Rovin Runtime")
+def rovinArchiveName = getRovinProperty("archiveName", "RovinRuntime")
+def rovinHomepageUrl = getRovinProperty("homepageUrl", "")
+def rovinHostedGameUrl = getRovinProperty("hostedGameUrl", "")
+def rovinProductTitle = getRovinProperty("productTitle", "Rovin Runtime")
+def rovinLandingPlayLabel = getRovinProperty("landingPlayLabel", "Open Experience")
+def rovinBundledContentEnabled = getRovinBooleanProperty("bundledContentEnabled", true)
+def rovinBundledEntryPath = getRovinProperty("bundledEntryPath", "bundled-app/index.html")
+def rovinLauncherActivityName = getRovinProperty("launcherActivityName", ".RovinRuntimeActivity")
+def rovinDefaultEnvironmentId = getRovinProperty("defaultEnvironmentId", "void")
+
 android {
     namespace 'com.igalia.wolvic'
     compileSdkVersion 35
     defaultConfig {
-        applicationId "com.rovingames.runtime"
+        applicationId rovinApplicationId
+        manifestPlaceholders["runtimeActivityName"] = rovinLauncherActivityName
+        ndk { abiFilters 'arm64-v8a' }
         minSdkVersion 24
         targetSdkVersion 34
-        versionCode generatedVersionCode
-        versionName "1.0.0-dev"
+        versionCode project.hasProperty('versionCodeOverride') ? project.property('versionCodeOverride').toInteger() : 1
+        versionName project.hasProperty('versionNameOverride') ? project.property('versionNameOverride') : "0.1.0"
         buildConfigField "String", "GIT_HASH", "\"${getGitHash()}\""
         buildConfigField "Boolean", "DISABLE_CRASH_RESTART", getCrashRestartDisabled()
         buildConfigField "String", "AMO_COLLECTION", "\"fxr\""
@@ -137,22 +169,27 @@ android {
         buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "false"
         buildConfigField "String[]", "SPEECH_SERVICES", "{ com.igalia.wolvic.speech.SpeechServices.MEETKAI }"
         buildConfigField "Boolean", "SUPPORTS_SYSTEM_NOTIFICATIONS", "false"
-        buildConfigField "Float", "DEFAULT_DENSITY", "1.25f"
+        buildConfigField "Float", "DEFAULT_DENSITY", "1.5f"
         buildConfigField "Float", "DEFAULT_WINDOW_DISTANCE", "0.0f"
         buildConfigField "Boolean", "ENABLE_PAGE_ZOOM", "false"
         buildConfigField "Boolean", "USE_SOUNDPOOL", "true"
         buildConfigField 'String', 'ANNOUNCEMENTS_ENDPOINT', '"https://igalia.github.io/wolvic/announcements.json"'
         buildConfigField 'String', 'EXPERIENCES_ENDPOINT', '"https://igalia.github.io/wolvic/experiences.json"'
         buildConfigField 'String', 'HEYVR_ENDPOINT', '"https://api.heyvr.io/v1/public/global/feed/featured?limit=50"'
-        buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', '""'
-        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', '"Rovin Runtime"'
-        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', 'true'
-        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', '"bundled-app/index.html"'
+        buildConfigField 'String', 'ROVIN_FIXED_TARGET_URL', rovinStringLiteral(rovinHostedGameUrl)
+        buildConfigField 'String', 'ROVIN_PRODUCT_TITLE', rovinStringLiteral(rovinProductTitle)
+        buildConfigField 'String', 'ROVIN_LANDING_PLAY_LABEL', rovinStringLiteral(rovinLandingPlayLabel)
+        buildConfigField 'Boolean', 'ROVIN_BUNDLED_CONTENT_ENABLED', rovinBundledContentEnabled.toString()
+        buildConfigField 'String', 'ROVIN_BUNDLED_ENTRY_PATH', rovinStringLiteral(rovinBundledEntryPath)
+        buildConfigField 'String', 'ROVIN_DEFAULT_ENVIRONMENT_ID', rovinStringLiteral(rovinDefaultEnvironmentId)
         buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
+        // FEAT-0018: runtime-generic JSON save file config (eligible for Android/Quest Auto Backup via getFilesDir()).
+        buildConfigField 'String', 'ROVIN_SAVE_SUBDIR', '"rovin-save"'
+        buildConfigField 'String', 'ROVIN_SAVE_FILENAME', '"rovin-save.json"'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue 'string', 'app_name', 'Rovin Runtime'
-        resValue 'string', 'HOMEPAGE_URL', "https://example.invalid/"
+        resValue 'string', 'app_name', rovinAppName
+        resValue 'string', 'HOMEPAGE_URL', rovinHomepageUrl
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++14 -fexceptions -frtti -Werror" +
@@ -178,7 +215,7 @@ android {
     }
 
     base {
-        archivesName = "RovinRuntime"
+        archivesName = rovinArchiveName
     }
 
     signingConfigs {
@@ -248,6 +285,7 @@ android {
         def backend = variant.productFlavors.find { it.dimension == "backend" }?.name
         def product = variant.productFlavors.find { it.dimension == "product" }?.name
         variant.outputs.each { output ->
+            /* 
             if (variant.buildType.name == "release") {
                 if (backend == "gecko") {
                     output.versionNameOverride = GECKO_RELEASE_VERSION_NAME
@@ -255,11 +293,13 @@ android {
                     output.versionNameOverride = product == "browser" ? CHROMIUM_BROWSER_RELEASE_VERSION_NAME : CHROMIUM_RUNTIME_RELEASE_VERSION_NAME
                 }
             }
+            */
             def platform = variant.productFlavors.find { it.dimension == "platform" }?.name
+            /* 
             if (shouldUseStaticVersionCode()) {
                 // Overrides any build created with a generated version code from now to 2115
                 output.versionCodeOverride = 1_99_365_2300
-            } else if (platform != null && platform.toLowerCase().startsWith('picoxr')) {
+            } else */ if (platform != null && platform.toLowerCase().startsWith('picoxr')) {
                 // PICO store requires a slightly different version code.
                 output.versionCodeOverride = generatedVersionCode + 1900000000
             }
@@ -355,7 +395,7 @@ android {
 
         visionglass {
             dimension "platform"
-            applicationId "com.rovingames.runtime"
+            applicationId rovinApplicationId
             applicationIdSuffix ".visionglass"
             resValue "string", "app_name", "Wolvic Vision"
             targetSdkVersion 33
@@ -416,13 +456,13 @@ android {
         runtime {
             dimension "product"
             buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'true'
-            resValue "string", "app_name", "Rovin Runtime"
+            resValue "string", "app_name", rovinAppName
         }
 
         browser {
             dimension "product"
             buildConfigField 'Boolean', 'ROVIN_RUNTIME', 'false'
-            resValue "string", "app_name", "Rovin Browser"
+            resValue "string", "app_name", "Rovin Runtime"
         }
 
         // Stores flavor
@@ -441,7 +481,7 @@ android {
         }
 
         mainlandChina {
-            applicationId "com.rovingames.runtime"
+            applicationId rovinApplicationId
             dimension "store"
             buildConfigField "Boolean", "FXA_USE_CHINA_SERVER", "true"
             buildConfigField "Boolean", "WEBVIEW_IN_PHONE_UI", "true"
@@ -625,6 +665,9 @@ configurations {
 }
 
 dependencies {
+    configurations.all {
+        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
+    }
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 
     // Common
@@ -707,6 +750,7 @@ dependencies {
     // MeetKai
     implementation fileTree(dir: "${project.rootDir}/libs/meetkai/", include: ['*.aar'])
     implementation libs.okhttp
+    implementation files('src/main/libs/okhttp-4.12.0-remediated.jar')
     implementation libs.zip4j
     implementation libs.apache.commonsmath3
 

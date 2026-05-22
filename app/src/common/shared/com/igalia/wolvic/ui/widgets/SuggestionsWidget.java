@@ -429,10 +429,16 @@ public class SuggestionsWidget extends UIWidget implements WidgetManagerDelegate
         final StyleSpan normal = new StyleSpan(Typeface.NORMAL);
         int start = text.toLowerCase().indexOf(mHighlightedText.toLowerCase());
         if (start >= 0) {
-            int end = start + mHighlightedText.length();
-            sb.setSpan(normal, 0, start, Spannable.SPAN_INCLUSIVE_INCLUSIVE);
-            sb.setSpan(bold, start, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE);
-            sb.setSpan(normal, end, text.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
+            int end = Math.min(start + mHighlightedText.length(), text.length());
+            if (start <= text.length()) {
+                sb.setSpan(normal, 0, start, Spannable.SPAN_INCLUSIVE_INCLUSIVE);
+            }
+            if (start <= end && end <= text.length()) {
+                sb.setSpan(bold, start, end, Spannable.SPAN_INCLUSIVE_INCLUSIVE);
+            }
+            if (end <= text.length()) {
+                sb.setSpan(normal, end, text.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
+            }
         }
 
         return sb;

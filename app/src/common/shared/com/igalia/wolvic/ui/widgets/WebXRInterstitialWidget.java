@@ -22,6 +22,8 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
     private AnimatedVectorDrawable mSpinnerAnimation;
     private boolean mWebXRRendering = false;
     private boolean mInterstitialDismissed = false;
+    private StringBuilder mConsoleBuffer = new StringBuilder();
+    private static final int MAX_CONSOLE_LINES = 15;
 
     public WebXRInterstitialWidget(Context aContext) {
         super(aContext);
@@ -58,10 +60,18 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
         mSpinnerAnimation = (AnimatedVectorDrawable) mBinding.webxrSpinner.getDrawable();
         mWidgetManager.addWebXRListener(this);
 
+        mBinding.rovinFallbackButton.setOnClickListener(v -> {
+            if (getContext() instanceof VRBrowserActivity) {
+                ((VRBrowserActivity)getContext()).signalReadyForVr();
+            }
+        });
     }
 
     private void setHowToVisible(boolean aShow) {
         mBinding.setShowHowTo(aShow);
+        if (aShow) {
+            mBinding.setShowFallback(false);
+        }
         mBinding.executePendingBindings();
         mWidgetPlacement.setSizeFromMeasure(getContext(), this);
         if (aShow) {
@@ -71,6 +81,12 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
             // MAke the spinner a bit smaller than the text
             mWidgetPlacement.worldWidth = mWidgetPlacement.width * WidgetPlacement.worldToDpRatio(getContext()) * 0.3f;
         }
+    }
+
+    public void showFallbackButton() {
+        mBinding.setShowHowTo(false);
+        mBinding.setShowFallback(true);
+        mBinding.executePendingBindings();
     }
 
     @Override
@@ -190,6 +206,7 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
         if (!mWebXRRendering) {
             stopAnimation();
         }
+        hide(REMOVE_WIDGET);
         mWidgetManager.updateWidget(this);
     }
 
@@ -201,5 +218,32 @@ public class WebXRInterstitialWidget extends UIWidget implements WidgetManagerDe
         } else if (!aRendering) {
             startAnimation();
         }
+    }
+
+    public void appendLog(String message) {
+        if (mConsoleBuffer == null) mConsoleBuffer = new StringBuilder();
+        if (mConsoleBuffer.length() > 0) {
+            mConsoleBuffer.append("\n");
+        }
+        mConsoleBuffer.append(message);
+        
+        String[] lines = mConsoleBuffer.toString().split("\n");
+        if (lines.length > MAX_CONSOLE_LINES) {
+            mConsoleBuffer = new StringBuilder();
+            for (int i = lines.length - MAX_CONSOLE_LINES; i < lines.length; i++) {
+                mConsoleBuffer.append(lines[i]);
+                if (i < lines.length - 1) mConsoleBuffer.append("\n");
+            }
+        }
+        
+        updateConsoleUI();
+    }
+
+    private void updateConsoleUI() {
+        if (mBinding == null || mBinding.webxrConsole == null) return;
+        
+        mBinding.webxrConsole.post(() -> {
+            mBinding.webxrConsole.setText(mConsoleBuffer.toString());
+        });
     }
 }

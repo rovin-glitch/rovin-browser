@@ -4,21 +4,21 @@
     android:installLocation="auto">
     <uses-feature android:glEsVersion="0x00030001"/>
     <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="${headtrackingRequired}" />
-    <uses-feature android:name="oculus.software.eye_tracking" />
     <uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
     <uses-permission android:name="${permissionToRemove}" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>
 
+    <!-- Strip Eye Tracking (Not used by the game, required for store compliance) -->
+    <uses-feature android:name="oculus.software.eye_tracking" tools:node="remove" />
+    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" tools:node="remove" />
+
     <!-- Not needed in Android 10 (API >= 29) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
     <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove"/>
 
-    <!-- Tell the system this app can handle tracked keyboards -->
-    <uses-feature android:name="oculus.software.trackedkeyboard" android:required="false" />
-    <uses-permission android:name="com.oculus.permission.TRACKED_KEYBOARD" />
 
     <!-- Tell the system this app uses render model extensions -->
     <uses-feature android:name="com.oculus.feature.RENDER_MODEL" android:required="true" />
@@ -30,11 +30,13 @@
 
     <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
 
-    <uses-permission android:name="com.oculus.permission.EYE_TRACKING" />
 
     <application
         android:name=".VRBrowserApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
         android:exported="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -42,9 +44,10 @@
         android:supportsRtl="true"
         android:resizeableActivity="false"
         android:supportsPictureInPicture="false"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules"
         >
         <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only"/>
-        <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro"/>
+        <meta-data android:name="com.oculus.supportedDevices" android:value="quest2|questpro|quest3|quest3s"/>
         <activity
             android:name=".VRBrowserActivity"
             android:launchMode="singleTask"
@@ -61,9 +64,14 @@
             <meta-data android:name="android.app.lib_name" android:value="native-lib" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.INFO" />
-                <category android:name="com.oculus.intent.category.VR" android:value="vr_only"/>
+                <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name="${runtimeActivityName}"
+            tools:node="remove" />
     </application>
 </manifest>
