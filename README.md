@@ -1,6 +1,6 @@
 # Rovin Browser / Rovin Runtime
 
-Rovin Browser is an open-source, Chromium/Wolvic-based XR browser project maintained by Rovin. It serves as the foundation for **Rovin Runtime**, a highly optimized, lightweight runtime layer designed to run WebXR applications as native-style, standalone Meta Quest applications.
+Rovin Browser is an open-source, Chromium/Wolvic-based XR browser project maintained by Rovin. It serves as the foundation for **Rovin Runtime**, a performance-focused, lightweight runtime layer designed to run WebXR applications as native-style, standalone Meta Quest applications.
 
 ---
 
@@ -9,7 +9,7 @@ Rovin Browser is an open-source, Chromium/Wolvic-based XR browser project mainta
 This repository is **active and under progressive development**. 
 
 * **State of the Code**: The codebase is undergoing an active transition. You may still encounter upstream Wolvic references in package names, resources, and build configuration files during this phase.
-* **Continuous Optimization**: The `rovin-runtime-main` branch is being progressively stripped, sanitized, and optimized for WebXR-only deployment, removing standard browser UI features and background services that are unnecessary for standalone app packaging.
+* **Continuous Optimization**: The `rovin-runtime-main` branch is being progressively stripped, sanitized, and optimized for WebXR-only deployment, progressively removing or disabling standard browser UI features and background services that are unnecessary for standalone app packaging.
 
 ---
 
@@ -97,7 +97,14 @@ When contributing or working with this codebase:
 * **Do not claim** this is a brand-new browser engine. It is a downstream fork of Wolvic/Chromium.
 * **Do not remove** or obscure upstream Wolvic/Chromium licensing or attribution.
 * **Do not add** marketing fluff or promise production-grade stability on experimental branches.
-* **Do not modify** core engine libraries unless validating compile compatibility against the March 30 AAR baseline.
+* **Do not modify** core engine libraries unless validating compile compatibility against the prebuilt Chromium AAR baseline.
+
+---
+
+## Project Proof
+
+Rovin Runtime is currently used as the runtime foundation for **Neon Chuck**, an Early Access Meta Horizon Store rhythm-action game:
+* **Meta Store Page**: [Neon Chuck on the Meta Horizon Store](https://www.meta.com/experiences/neon-chuck/26400896279594162)
 
 ---
 
@@ -167,7 +174,7 @@ For detailed instructions on building against a development version of the Chrom
 ## Roadmap
 
 * [ ] **Strict Profile Separation**: Separate browser and runtime targets cleanly at the build variant level rather than using runtime branch drift.
-* [ ] **Runtime-Only Build Flavor**: Implement a compiler configuration that fully strips 2D browser code, reducing APK payload size by up to 30%.
-* [ ] **App Store Readiness**: Complete the audit and removal of background telemetry and unused Android permissions to satisfy Horizon Store reviews.
+* [ ] **Runtime-Only Build Flavor**: Implement a compiler configuration that fully strips 2D browser code, reducing APK payload size and startup overhead.
+* [ ] **App Store Readiness**: Complete the audit and removal of unused background services and permissions to satisfy Horizon Store reviews.
 * [ ] **Advanced Startup Handshake**: Refine the polling protocol between the native startup activity and in-page WebXR to minimize cold-boot latency.
 * [ ] **Modular App Templates**: Provide clean project examples for packaging any WebXR app using the Rovin Runtime baseline.
